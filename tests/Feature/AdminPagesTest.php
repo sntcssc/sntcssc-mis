@@ -35,6 +35,7 @@ test('authenticated users can visit every admin page', function (string $path) {
     'reports' => ['reports'],
     'saved reports' => ['reports/saved'],
     'profile' => ['profile'],
+    'system settings' => ['system/settings'],
 ]);
 
 test('the verify otp page can be rendered by guests', function () {

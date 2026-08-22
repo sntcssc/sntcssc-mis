@@ -48,6 +48,7 @@
                         ['icon' => 'lock', 'label' => __('Security'), 'href' => route('security.edit'), 'active' => request()->routeIs('security.edit')],
                         ['icon' => 'palette', 'label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit')],
                         ['icon' => 'users', 'label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*')],
+                        ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.*')],
                     ],
                 ],
             ],
