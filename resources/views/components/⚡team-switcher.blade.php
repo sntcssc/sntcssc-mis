@@ -32,7 +32,7 @@ new class extends Component {
 
         abort_unless(
             $user->belongsToTeam($team = Team::where('slug', $slug)->firstOrFail()),
-            403
+            403,
         );
 
         $currentTeamSlug = $user->currentTeam?->slug;
@@ -78,43 +78,49 @@ new class extends Component {
     }
 }; ?>
 
-<div>
-    <flux:dropdown position="bottom" align="start">
-        <flux:button variant="ghost" class="group w-full justify-start in-data-flux-sidebar-collapsed-desktop:justify-center" data-test="team-switcher-trigger">
-            <flux:icon name="users" class="hidden size-4 in-data-flux-sidebar-collapsed-desktop:block" />
-            <span class="truncate font-semibold in-data-flux-sidebar-collapsed-desktop:hidden">{{ $this->currentTeam()['name'] ?? __('Select team') }}</span>
-            <flux:icon
-                name="chevrons-up-down"
-                variant="micro"
-                class="ms-auto size-4 in-data-flux-sidebar-collapsed-desktop:hidden"
-            />
-        </flux:button>
+<div class="hidden sm:block">
+    <x-ui.dropdown width="w-56" align="end" offset="mt-1">
+        <x-slot:trigger>
+            <button
+                type="button"
+                class="flex h-9 items-center gap-1.5 rounded-md border border-border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:hover:bg-input/50 px-3 text-xs font-medium cursor-pointer transition-colors"
+                data-test="team-switcher-trigger"
+            >
+                <span class="text-muted-foreground uppercase tracking-wide">{{ __('Team') }}</span>
+                <span class="max-w-[120px] truncate">{{ $this->currentTeam()['name'] ?? __('Select team') }}</span>
+                <x-icon name="chevron-down" class="h-3 w-3 text-muted-foreground"/>
+            </button>
+        </x-slot:trigger>
 
-        <flux:menu class="min-w-56">
-            <flux:menu.heading>{{ __('Teams') }}</flux:menu.heading>
+        <x-ui.dropdown.label>{{ __('Teams') }}</x-ui.dropdown.label>
+        <x-ui.dropdown.separator/>
 
-            @foreach ($this->teams() as $team)
-                <flux:menu.item
-                    wire:click="switchTeam('{{ $team->slug }}')"
-                    class="cursor-pointer"
-                    data-test="team-switcher-item"
-                >
-                    <div class="flex w-full items-center justify-between">
-                        <span>{{ $team->name }}</span>
-                        @if ($team->isCurrent)
-                            <flux:icon name="check" class="size-4" />
-                        @endif
-                    </div>
-                </flux:menu.item>
-            @endforeach
+        @foreach ($this->teams() as $team)
+            <button
+                type="button"
+                wire:click="switchTeam('{{ $team->slug }}')"
+                class="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm text-popover-foreground hover:bg-secondary transition-colors cursor-pointer"
+                data-test="team-switcher-item"
+            >
+                <span class="truncate">{{ $team->name }}</span>
+                @if ($team->isCurrent)
+                    <span class="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20">
+                        <x-icon name="check" class="h-2.5 w-2.5 text-emerald-500" stroke-width="3"/>
+                    </span>
+                @endif
+            </button>
+        @endforeach
 
-            <flux:menu.separator />
-
-            <flux:modal.trigger name="create-team-switcher">
-                <flux:menu.item icon="plus" class="cursor-pointer" data-test="team-switcher-new-team">
-                    {{ __('New team') }}
-                </flux:menu.item>
-            </flux:modal.trigger>
-        </flux:menu>
-    </flux:dropdown>
+        <x-ui.dropdown.separator/>
+        <button
+            type="button"
+            x-data
+            x-on:click="$store.modals.open('create-team')"
+            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-emerald-500 hover:bg-secondary transition-colors cursor-pointer"
+            data-test="team-switcher-new-team"
+        >
+            <x-icon name="plus" class="h-4 w-4"/>
+            {{ __('New team') }}
+        </button>
+    </x-ui.dropdown>
 </div>

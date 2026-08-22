@@ -12,4 +12,16 @@
 @fonts
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
-@fluxAppearance
+
+<script>
+    (function () {
+        var theme = 'system';
+        try { theme = localStorage.getItem('theme') || 'system'; } catch (e) {}
+
+        var dark = theme === 'dark'
+            || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+        document.documentElement.classList.toggle('dark', dark);
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    })();
+</script>

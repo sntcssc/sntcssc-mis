@@ -1,14 +1,33 @@
 <?php
 
+use App\Http\Controllers\LocaleController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
+Route::view('verify-otp', 'pages.auth.verify-otp')->name('verify-otp');
+
+Route::post('locale', LocaleController::class)->name('locale.switch');
+
+// Settings routes must be registered before the {current_team} group so that
+// paths like /settings/profile are not captured by /{current_team}/profile.
+require __DIR__.'/settings.php';
+
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
         Route::view('dashboard', 'dashboard')->name('dashboard');
-    });
 
-require __DIR__.'/settings.php';
+        Route::livewire('students', 'pages::admin.students')->name('admin.students.index');
+        Route::livewire('admissions', 'pages::admin.admissions')->name('admin.admissions.index');
+        Route::livewire('enrollments', 'pages::admin.enrollments')->name('admin.enrollments.index');
+        Route::livewire('courses', 'pages::admin.courses')->name('admin.courses.index');
+        Route::livewire('batches', 'pages::admin.batches')->name('admin.batches.index');
+        Route::livewire('tests', 'pages::admin.tests')->name('admin.tests.index');
+        Route::livewire('users', 'pages::admin.users')->name('admin.users.index');
+        Route::livewire('roles', 'pages::admin.roles')->name('admin.roles.index');
+        Route::livewire('reports', 'pages::admin.reports')->name('admin.reports.index');
+        Route::livewire('reports/saved', 'pages::admin.reports-saved')->name('admin.reports.saved');
+        Route::livewire('profile', 'pages::admin.profile')->name('admin.profile.show');
+    });

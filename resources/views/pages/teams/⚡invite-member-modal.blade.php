@@ -4,7 +4,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use App\Rules\UniqueTeamInvitation;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
@@ -46,7 +46,7 @@ new class extends Component {
         $this->reset('inviteEmail', 'inviteRole');
         $this->dispatch('close-modal', name: 'invite-member');
 
-        Flux::toast(variant: 'success', text: __('Invitation sent.'));
+        Toast::dispatch($this, 'success', __('Invitation sent.'));
 
         $this->redirectRoute('teams.edit', ['team' => $this->team->slug], navigate: true);
     }
@@ -58,28 +58,24 @@ new class extends Component {
     }
 }; ?>
 
-<flux:modal name="invite-member" :show="$errors->isNotEmpty()" focusable class="max-w-lg">
-    <form wire:submit="createInvitation" class="space-y-6">
+<x-ui.modal name="invite-member" max-width="max-w-md" :title="__('Invite a team member')" :description="__('Send an invitation to join this team.')">
+    <form wire:submit="createInvitation" class="space-y-4">
+        <x-ui.input wire:model="inviteEmail" type="email" :label="__('Email address') .' *'" required data-test="invite-email" :error="$errors->first('inviteEmail')"/>
+
         <div>
-            <flux:heading size="lg">{{ __('Invite a team member') }}</flux:heading>
-            <flux:subheading>{{ __('Send an invitation to join this team.') }}</flux:subheading>
-        </div>
-
-        <div class="space-y-4">
-            <flux:input wire:model="inviteEmail" type="email" :label="__('Email address')" required data-test="invite-email" />
-
-            <flux:select wire:model="inviteRole" :label="__('Role')" data-test="invite-role">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Role') }}</label>
+            <x-ui.select wire:model="inviteRole" class="mt-2" data-test="invite-role">
                 @foreach ($this->availableRoles as $role)
-                    <flux:select.option value="{{ $role['value'] }}">{{ $role['label'] }}</flux:select.option>
+                    <option value="{{ $role['value'] }}">{{ $role['label'] }}</option>
                 @endforeach
-            </flux:select>
+            </x-ui.select>
         </div>
 
-        <div class="flex justify-end space-x-2 rtl:space-x-reverse">
-            <flux:modal.close>
-                <flux:button variant="filled">{{ __('Cancel') }}</flux:button>
-            </flux:modal.close>
-            <flux:button variant="primary" type="submit" data-test="invite-submit">{{ __('Send invitation') }}</flux:button>
+        <div class="flex justify-end gap-2 pt-2">
+            <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('invite-member')">
+                {{ __('Cancel') }}
+            </x-ui.button>
+            <x-ui.button type="submit" data-test="invite-submit">{{ __('Send invitation') }}</x-ui.button>
         </div>
     </form>
-</flux:modal>
+</x-ui.modal>

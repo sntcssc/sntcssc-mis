@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\TeamInvitation;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -15,7 +15,7 @@ new class extends Component {
     public function mount(): void
     {
         if (session()->pull('team-invitation-accepted')) {
-            Flux::toast(variant: 'success', text: __('Invitation accepted.'));
+            Toast::dispatch($this, 'success', __('Invitation accepted.'));
         }
     }
 
@@ -73,7 +73,7 @@ new class extends Component {
 
         $invitation->delete();
 
-        Flux::toast(variant: 'success', text: __('Invitation declined.'));
+        Toast::dispatch($this, 'success', __('Invitation declined.'));
     }
 
     private function findPendingInvitation(string $code): TeamInvitation
@@ -101,46 +101,42 @@ new class extends Component {
 
 <div>
     @if ($this->pendingInvitations->isNotEmpty())
-        <flux:modal name="pending-invitations" wire:model="showPendingInvitationsModal" focusable class="max-w-lg">
-            <div data-test="pending-invitations-modal" class="space-y-6">
-                <div>
-                    <flux:heading size="lg">{{ __('Pending team invitations') }}</flux:heading>
-                    <flux:subheading>{{ __('Accept or decline the teams you have been invited to join.') }}</flux:subheading>
-                </div>
-
-                <div class="grid gap-4">
-                    @foreach ($this->pendingInvitations as $invitation)
-                        <div data-test="pending-invitation-row" class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
-                            <div class="space-y-1">
-                                <p class="font-medium">{{ $invitation['team_name'] }}</p>
-                                <flux:text class="text-sm text-zinc-500 dark:text-zinc-400">
-                                    {{ __(':inviter invited you to join this team.', ['inviter' => $invitation['inviter_name']]) }}
-                                </flux:text>
-                            </div>
-
-                            <div class="mt-4 flex justify-end gap-2">
-                                <flux:button
-                                    variant="filled"
-                                    wire:click="declineInvitation('{{ $invitation['code'] }}')"
-                                    wire:loading.attr="disabled"
-                                    data-test="pending-invitation-decline"
-                                >
-                                    {{ __('Decline') }}
-                                </flux:button>
-
-                                <flux:button
-                                    variant="primary"
-                                    wire:click="acceptInvitation('{{ $invitation['code'] }}')"
-                                    wire:loading.attr="disabled"
-                                    data-test="pending-invitation-accept"
-                                >
-                                    {{ __('Accept') }}
-                                </flux:button>
-                            </div>
+        <x-ui.modal name="pending-invitations" max-width="max-w-md" :title="__('Pending team invitations')" :description="__('Accept or decline the teams you have been invited to join.')">
+            <div data-test="pending-invitations-modal" class="space-y-4">
+                @foreach ($this->pendingInvitations as $invitation)
+                    <div data-test="pending-invitation-row" class="rounded-lg border border-border p-4">
+                        <div class="space-y-1">
+                            <p class="text-sm font-medium">{{ $invitation['team_name'] }}</p>
+                            <p class="text-sm text-muted-foreground">
+                                {{ __(':inviter invited you to join this team.', ['inviter' => $invitation['inviter_name']]) }}
+                            </p>
                         </div>
-                    @endforeach
-                </div>
+
+                        <div class="mt-4 flex justify-end gap-2">
+                            <x-ui.button
+                                variant="outline"
+                                wire:click="declineInvitation('{{ $invitation['code'] }}')"
+                                wire:loading.attr="disabled"
+                                data-test="pending-invitation-decline"
+                            >
+                                {{ __('Decline') }}
+                            </x-ui.button>
+
+                            <x-ui.button
+                                wire:click="acceptInvitation('{{ $invitation['code'] }}')"
+                                wire:loading.attr="disabled"
+                                data-test="pending-invitation-accept"
+                            >
+                                {{ __('Accept') }}
+                            </x-ui.button>
+                        </div>
+                    </div>
+                @endforeach
+
+                @error('invitation')
+                    <p class="text-xs text-destructive">{{ $message }}</p>
+                @enderror
             </div>
-        </flux:modal>
+        </x-ui.modal>
     @endif
 </div>

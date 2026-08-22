@@ -128,7 +128,7 @@ test('accepted invitation toast is shown on the dashboard', function () {
     $this->actingAs($user);
 
     Livewire::test('pages::teams.pending-invitations-modal')
-        ->assertDispatched('toast-show');
+        ->assertDispatched('toast', type: 'success', message: __('Invitation accepted.'));
 });
 
 test('pending invitations excludes expired invitations without deleting them', function () {

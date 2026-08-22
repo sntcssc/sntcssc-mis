@@ -3,7 +3,7 @@
 use App\Data\UserTeam;
 use App\Models\Team;
 use App\Models\User;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -61,7 +61,7 @@ new class extends Component {
             $user->switchTeam($fallbackTeam);
         }
 
-        Flux::toast(variant: 'success', text: __('Team deleted.'));
+        Toast::dispatch($this, 'success', __('Team deleted.'));
 
         $this->redirectRoute('teams.index', navigate: true);
     }
@@ -76,26 +76,21 @@ new class extends Component {
     }
 }; ?>
 
-<flux:modal name="delete-team" :show="$errors->isNotEmpty()" focusable class="max-w-lg">
-    <form wire:submit="deleteTeam" class="space-y-6">
-        <div>
-            <flux:heading size="lg">{{ __('Are you sure?') }}</flux:heading>
-            <flux:subheading>
-                {{ __('This action cannot be undone. This will permanently delete the team ":name".', ['name' => $team->name]) }}
-            </flux:subheading>
-        </div>
+<x-ui.modal name="delete-team" max-width="max-w-md" :title="__('Are you sure?')">
+    <form wire:submit="deleteTeam" class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+            {{ __('This action cannot be undone. This will permanently delete the team ":name".', ['name' => $team->name]) }}
+        </p>
 
-        <div class="space-y-4">
-            <flux:input wire:model="deleteName" :label="$this->deleteConfirmLabel" required data-test="delete-team-name" />
-        </div>
+        <x-ui.input wire:model="deleteName" :label="$this->deleteConfirmLabel .' *'" required data-test="delete-team-name" :error="$errors->first('deleteName')"/>
 
-        <div class="flex justify-end space-x-2 rtl:space-x-reverse">
-            <flux:modal.close>
-                <flux:button variant="filled">{{ __('Cancel') }}</flux:button>
-            </flux:modal.close>
-            <flux:button variant="danger" type="submit" data-test="delete-team-confirm">
+        <div class="flex justify-end gap-2 pt-2">
+            <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('delete-team')">
+                {{ __('Cancel') }}
+            </x-ui.button>
+            <x-ui.button variant="destructive" type="submit" data-test="delete-team-confirm">
                 {{ __('Delete team') }}
-            </flux:button>
+            </x-ui.button>
         </div>
     </form>
-</flux:modal>
+</x-ui.modal>

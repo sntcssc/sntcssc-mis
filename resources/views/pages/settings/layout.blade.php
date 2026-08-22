@@ -1,20 +1,32 @@
-<div class="flex items-start max-md:flex-col">
-    <div class="me-10 w-full pb-4 md:w-[220px]">
-        <flux:navlist aria-label="{{ __('Settings') }}">
-            <flux:navlist.item :href="route('profile.edit')" wire:navigate>{{ __('Profile') }}</flux:navlist.item>
-            <flux:navlist.item :href="route('security.edit')" wire:navigate>{{ __('Security') }}</flux:navlist.item>
-            <flux:navlist.item :href="route('teams.index')" :current="request()->routeIs('teams.*')" wire:navigate>{{ __('Teams') }}</flux:navlist.item>
-            <flux:navlist.item :href="route('appearance.edit')" wire:navigate>{{ __('Appearance') }}</flux:navlist.item>
-        </flux:navlist>
+@php
+    $tabs = [
+        ['label' => __('Profile'), 'href' => route('profile.edit'), 'active' => request()->routeIs('profile.edit')],
+        ['label' => __('Security'), 'href' => route('security.edit'), 'active' => request()->routeIs('security.edit')],
+        ['label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*')],
+        ['label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit')],
+    ];
+@endphp
+
+<div class="w-full">
+    <div class="flex gap-1 p-1 bg-secondary/50 rounded-lg w-full sm:w-fit overflow-x-auto">
+        @foreach ($tabs as $tab)
+            <a
+                href="{{ $tab['href'] }}"
+                wire:navigate
+                class="flex-1 sm:flex-none flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap {{ $tab['active'] ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground' }}"
+            >
+                {{ $tab['label'] }}
+            </a>
+        @endforeach
     </div>
 
-    <flux:separator class="md:hidden" />
+    <div class="mt-6">
+        <h2 class="text-lg font-semibold tracking-tight">{{ $heading ?? '' }}</h2>
+        @if (($subheading ?? null) !== '')
+            <p class="text-sm text-muted-foreground mt-1">{{ $subheading }}</p>
+        @endif
 
-    <div class="flex-1 self-stretch max-md:pt-6">
-        <flux:heading>{{ $heading ?? '' }}</flux:heading>
-        <flux:subheading>{{ $subheading ?? '' }}</flux:subheading>
-
-        <div class="mt-5 w-full max-w-lg">
+        <div class="mt-6 w-full max-w-2xl">
             {{ $slot }}
         </div>
     </div>

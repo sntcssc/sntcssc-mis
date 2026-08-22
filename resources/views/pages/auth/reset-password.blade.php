@@ -1,54 +1,61 @@
 <x-layouts::auth :title="__('Reset password')">
-    <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Reset password')" :description="__('Please enter your new password below')" />
+    <div class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm">
+        <div class="flex flex-col items-center mb-6">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 mb-3">
+                <x-icon name="zap" class="h-5 w-5 text-emerald-500"/>
+            </div>
+            <h1 class="text-xl font-semibold">{{ __('Reset password') }}</h1>
+            <p class="text-sm text-muted-foreground mt-1 text-center">{{ __('Please enter your new password below') }}</p>
+        </div>
 
-        <!-- Session Status -->
-        <x-auth-session-status class="text-center" :status="session('status')" />
+        {{-- Session Status --}}
+        <x-auth-session-status class="mb-5" :status="session('status')"/>
 
-        <form method="POST" action="{{ route('password.update') }}" class="flex flex-col gap-6">
+        <form method="POST" action="{{ route('password.update') }}" class="space-y-5">
             @csrf
-            <!-- Token -->
             <input type="hidden" name="token" value="{{ request()->route('token') }}">
 
-            <!-- Email Address -->
-            <flux:input
+            <x-ui.input
                 name="email"
-                value="{{ request('email') }}"
+                value="{{ old('email', request('email')) }}"
                 :label="__('Email')"
                 type="email"
                 required
                 autocomplete="email"
+                size="lg"
+                :error="$errors->first('email')"
             />
 
-            <!-- Password -->
-            <flux:input
+            <x-ui.password
                 name="password"
                 :label="__('Password')"
-                type="password"
                 required
                 autocomplete="new-password"
-                :placeholder="__('Password')"
-                passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
-                viewable
+                placeholder="{{ __('Password') }}"
+                size="lg"
+                :error="$errors->first('password')"
             />
 
-            <!-- Confirm Password -->
-            <flux:input
+            <x-ui.password
                 name="password_confirmation"
                 :label="__('Confirm password')"
-                type="password"
                 required
                 autocomplete="new-password"
-                :placeholder="__('Confirm password')"
-                passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
-                viewable
+                placeholder="{{ __('Confirm password') }}"
+                size="lg"
+                :error="$errors->first('password_confirmation')"
             />
 
-            <div class="flex items-center justify-end">
-                <flux:button type="submit" variant="primary" class="w-full" data-test="reset-password-button">
-                    {{ __('Reset password') }}
-                </flux:button>
-            </div>
+            <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold" data-test="reset-password-button">
+                {{ __('Reset password') }}
+            </x-ui.button>
         </form>
+
+        <p class="mt-5 text-center text-sm text-muted-foreground">
+            <a href="{{ route('login') }}" wire:navigate class="inline-flex items-center gap-1.5 text-emerald-500 hover:underline font-medium">
+                <x-icon name="arrow-left" class="h-3.5 w-3.5"/>
+                {{ __('Back to sign in') }}
+            </a>
+        </p>
     </div>
 </x-layouts::auth>

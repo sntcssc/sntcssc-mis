@@ -1,79 +1,85 @@
 <x-layouts::auth :title="__('Register')">
-    <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Create an account')" :description="__('Enter your details below to create your account')" />
+    <div class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm">
+        <div class="flex flex-col items-center mb-6">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 mb-3">
+                <x-icon name="zap" class="h-5 w-5 text-emerald-500"/>
+            </div>
+            <h1 class="text-xl font-semibold">{{ __('Create an account') }}</h1>
+            <p class="text-sm text-muted-foreground mt-1 text-center">{{ __('Enter your details below to create your account') }}</p>
+        </div>
 
-        <!-- Session Status -->
-        <x-auth-session-status class="text-center" :status="session('status')" />
+        {{-- Session Status --}}
+        <x-auth-session-status class="mb-5" :status="session('status')"/>
 
         @if ($teamInvitation)
-            <x-team-invitation-alert :invitation="$teamInvitation" :action="__('Register')" />
+            <div class="mb-5">
+                <x-team-invitation-alert :invitation="$teamInvitation" :action="__('Register')"/>
+            </div>
         @endif
 
-        <form method="POST" action="{{ route('register.store') }}" class="flex flex-col gap-6">
+        <form method="POST" action="{{ route('register.store') }}" class="space-y-5">
             @csrf
-            <!-- Name -->
-            <flux:input
+
+            <x-ui.input
                 name="name"
-                :label="__('Name')"
-                :value="old('name')"
+                :label="__('Full name')"
+                value="{{ old('name') }}"
                 type="text"
                 required
                 autofocus
                 autocomplete="name"
-                :placeholder="__('Full name')"
+                placeholder="{{ __('Full name') }}"
+                size="lg"
+                :error="$errors->first('name')"
             />
 
-            <!-- Email Address -->
-            <flux:input
+            <x-ui.input
                 name="email"
-                :label="__('Email address')"
-                :value="old('email')"
+                :label="__('Email')"
+                value="{{ old('email') }}"
                 type="email"
                 required
                 autocomplete="email"
                 placeholder="email@example.com"
+                size="lg"
+                :error="$errors->first('email')"
             />
 
-            <!-- Password -->
-            <flux:input
+            <x-ui.password
                 name="password"
                 :label="__('Password')"
-                type="password"
                 required
                 autocomplete="new-password"
-                :placeholder="__('Password')"
-                passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
-                viewable
+                placeholder="{{ __('Password') }}"
+                size="lg"
+                :error="$errors->first('password')"
             />
 
-            <!-- Confirm Password -->
-            <flux:input
+            <x-ui.password
                 name="password_confirmation"
                 :label="__('Confirm password')"
-                type="password"
                 required
                 autocomplete="new-password"
-                :placeholder="__('Confirm password')"
-                passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
-                viewable
+                placeholder="{{ __('Confirm password') }}"
+                size="lg"
+                :error="$errors->first('password_confirmation')"
             />
 
-            <div class="flex items-center justify-end">
-                <flux:button type="submit" variant="primary" class="w-full" data-test="register-user-button">
-                    {{ __('Create account') }}
-                </flux:button>
-            </div>
+            <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold" data-test="register-user-button">
+                {{ __('Create account') }}
+            </x-ui.button>
         </form>
 
-        <div class="space-x-1 rtl:space-x-reverse text-center text-sm text-zinc-600 dark:text-zinc-400">
-            <span>{{ __('Already have an account?') }}</span>
-            <flux:link
-                :href="$teamInvitation ? route('login', ['invitation' => $teamInvitation['code']]) : route('login')"
+        <p class="mt-5 text-center text-sm text-muted-foreground">
+            {{ __('Already have an account?') }}
+            <a
+                href="{{ $teamInvitation ? route('login', ['invitation' => $teamInvitation['code']]) : route('login') }}"
                 data-test="team-invitation-login-link"
                 wire:navigate
+                class="text-emerald-500 hover:underline font-medium"
             >
-                {{ __('Log in') }}
-            </flux:link>
-        </div>
+                {{ __('Sign in') }}
+            </a>
+        </p>
     </div>
 </x-layouts::auth>

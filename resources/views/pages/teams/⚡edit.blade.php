@@ -4,7 +4,7 @@ use App\Data\TeamPermissions;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Rules\TeamName;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -57,7 +57,7 @@ new class extends Component
 
         $this->populateTeamData();
 
-        Flux::toast(variant: 'success', text: __('Team updated.'));
+        Toast::dispatch($this, 'success', __('Team updated.'));
 
         $this->redirectRoute('teams.edit', ['team' => $this->teamModel->fresh()->slug], navigate: true);
     }
@@ -77,7 +77,7 @@ new class extends Component
 
         $this->populateTeamData();
 
-        Flux::toast(variant: 'success', text: __('Member role updated.'));
+        Toast::dispatch($this, 'success', __('Member role updated.'));
     }
 
     private function populateTeamData(): void
@@ -140,91 +140,86 @@ new class extends Component
 <section class="w-full">
     @include('partials.settings-heading')
 
-    <flux:heading class="sr-only">{{ __('Teams') }}</flux:heading>
+    <h2 class="sr-only">{{ __('Teams') }}</h2>
 
     <x-pages::settings.layout :heading="__('Teams')" :subheading="__('Manage your team settings')">
-        <div class="space-y-10">
-            <div class="space-y-6">
+        <div class="space-y-8">
+            <div class="space-y-5">
                 @if ($this->permissions->canUpdateTeam)
-                    <div class="space-y-4">
-                        <form wire:submit="updateTeam" class="space-y-6">
-                            <flux:input wire:model="teamName" :label="__('Team name')" required data-test="team-name-input" />
+                    <form wire:submit="updateTeam" class="space-y-5 rounded-xl border border-border bg-card p-5">
+                        <x-ui.input wire:model="teamName" :label="__('Team name') .' *'" required data-test="team-name-input" :error="$errors->first('teamName')"/>
 
-                            <flux:button variant="primary" type="submit" data-test="team-save-button">
+                        <div class="flex justify-end">
+                            <x-ui.button type="submit" data-test="team-save-button">
                                 {{ __('Save') }}
-                            </flux:button>
-                        </form>
-                    </div>
+                            </x-ui.button>
+                        </div>
+                    </form>
                 @else
-                    <div>
-                        <flux:heading>{{ $teamData['name'] }}</flux:heading>
+                    <div class="rounded-xl border border-border bg-card p-5">
+                        <p class="text-sm font-medium">{{ $teamData['name'] }}</p>
                     </div>
                 @endif
             </div>
 
-            <div class="space-y-6">
-                <div class="flex items-center justify-between">
+            <div class="space-y-4">
+                <div class="flex items-center justify-between gap-3">
                     <div>
-                        <flux:heading>{{ __('Team members') }}</flux:heading>
+                        <h3 class="text-sm font-semibold">{{ __('Team members') }}</h3>
                         @if ($this->permissions->canAddMember || $this->permissions->canUpdateMember || $this->permissions->canRemoveMember)
-                            <flux:subheading>{{ __('Manage who belongs to this team') }}</flux:subheading>
+                            <p class="text-xs text-muted-foreground mt-0.5">{{ __('Manage who belongs to this team') }}</p>
                         @endif
                     </div>
 
                     @if ($this->permissions->canCreateInvitation)
-                        <flux:modal.trigger name="invite-member">
-                            <flux:button variant="primary" icon="user-plus" data-test="invite-member-button">
-                                {{ __('Invite member') }}
-                            </flux:button>
-                        </flux:modal.trigger>
+                        <x-ui.button size="sm" x-data x-on:click="$store.modals.open('invite-member')" data-test="invite-member-button">
+                            <x-icon name="user-plus" class="h-4 w-4"/>
+                            {{ __('Invite member') }}
+                        </x-ui.button>
                     @endif
                 </div>
 
                 <div class="space-y-3">
                     @foreach ($members as $member)
-                        <div class="flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900" data-test="member-row">
-                            <div class="flex items-center gap-4">
-                                <flux:avatar :name="$member['name']" :initials="$member['initials']" />
-                                <div>
-                                    <div class="font-medium">{{ $member['name'] }}</div>
-                                    <flux:text class="text-sm text-zinc-500 dark:text-zinc-400">{{ $member['email'] }}</flux:text>
+                        <div class="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4" data-test="member-row">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <x-ui.avatar :name="$member['name']" :initials="$member['initials']" size="size-10 text-sm"/>
+                                <div class="min-w-0">
+                                    <div class="text-sm font-medium truncate">{{ $member['name'] }}</div>
+                                    <p class="text-xs text-muted-foreground truncate">{{ $member['email'] }}</p>
                                 </div>
                             </div>
 
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 shrink-0">
                                 @if ($member['role'] !== 'owner' && $this->permissions->canUpdateMember)
-                                    <flux:dropdown position="bottom" align="end">
-                                        <flux:button variant="outline" size="sm" icon:trailing="chevron-down" data-test="member-role-trigger">
-                                            {{ $member['role_label'] }}
-                                        </flux:button>
-                                        <flux:menu>
-                                            @foreach ($availableRoles as $role)
-                                                <flux:menu.item
-                                                    as="button"
-                                                    type="button"
-                                                    wire:click="updateMember({{ $member['id'] }}, '{{ $role['value'] }}')"
-                                                    data-test="member-role-option"
-                                                >
-                                                    {{ $role['label'] }}
-                                                </flux:menu.item>
-                                            @endforeach
-                                        </flux:menu>
-                                    </flux:dropdown>
+                                    <x-ui.dropdown width="w-40" align="end">
+                                        <x-slot:trigger>
+                                            <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-secondary transition-colors cursor-pointer" data-test="member-role-trigger">
+                                                {{ $member['role_label'] }}
+                                                <x-icon name="chevron-down" class="h-3 w-3 text-muted-foreground"/>
+                                            </button>
+                                        </x-slot:trigger>
+                                        @foreach ($availableRoles as $role)
+                                            <x-ui.dropdown.item wire:click="updateMember({{ $member['id'] }}, '{{ $role['value'] }}')" data-test="member-role-option">
+                                                {{ $role['label'] }}
+                                            </x-ui.dropdown.item>
+                                        @endforeach
+                                    </x-ui.dropdown>
                                 @else
-                                    <flux:badge color="zinc">{{ $member['role_label'] }}</flux:badge>
+                                    <x-ui.badge color="secondary">{{ $member['role_label'] }}</x-ui.badge>
                                 @endif
 
                                 @if ($member['role'] !== 'owner' && $this->permissions->canRemoveMember)
-                                    <flux:modal.trigger name="remove-member-{{ $member['id'] }}">
-                                        <flux:tooltip :content="__('Remove member')">
-                                            <flux:button
-                                                variant="ghost"
-                                                size="sm"
-                                                icon="x-mark"
-                                                data-test="member-remove-button"
-                                            />
-                                        </flux:tooltip>
-                                    </flux:modal.trigger>
+                                    <button
+                                        type="button"
+                                        x-data
+                                        x-on:click="$store.modals.open('remove-member-{{ $member['id'] }}')"
+                                        class="flex h-8 w-8 items-center justify-center rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
+                                        title="{{ __('Remove member') }}"
+                                        data-test="member-remove-button"
+                                    >
+                                        <x-icon name="x" class="h-4 w-4 text-destructive"/>
+                                    </button>
                                 @endif
                             </div>
                         </div>
@@ -243,36 +238,36 @@ new class extends Component
             </div>
 
             @if (count($invitations) > 0)
-                <div class="space-y-6">
+                <div class="space-y-4">
                     <div>
-                        <flux:heading>{{ __('Pending invitations') }}</flux:heading>
-                        <flux:subheading>{{ __('Invitations that have not been accepted yet') }}</flux:subheading>
+                        <h3 class="text-sm font-semibold">{{ __('Pending invitations') }}</h3>
+                        <p class="text-xs text-muted-foreground mt-0.5">{{ __('Invitations that have not been accepted yet') }}</p>
                     </div>
 
                     <div class="space-y-3">
                         @foreach ($invitations as $invitation)
-                            <div class="flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900" data-test="invitation-row">
-                                <div class="flex items-center gap-4">
-                                    <div class="flex size-10 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                                        <flux:icon name="envelope" class="text-zinc-500" />
+                            <div class="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4" data-test="invitation-row">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div class="flex size-10 items-center justify-center rounded-full bg-secondary">
+                                        <x-icon name="mail" class="h-4 w-4 text-muted-foreground"/>
                                     </div>
-                                    <div>
-                                        <div class="font-medium">{{ $invitation['email'] }}</div>
-                                        <flux:text class="text-sm text-zinc-500 dark:text-zinc-400">{{ $invitation['role_label'] }}</flux:text>
+                                    <div class="min-w-0">
+                                        <div class="text-sm font-medium truncate">{{ $invitation['email'] }}</div>
+                                        <p class="text-xs text-muted-foreground">{{ $invitation['role_label'] }}</p>
                                     </div>
                                 </div>
 
                                 @if ($this->permissions->canCancelInvitation)
-                                    <flux:modal.trigger name="cancel-invitation-{{ $invitation['code'] }}">
-                                        <flux:tooltip :content="__('Cancel invitation')">
-                                            <flux:button
-                                                variant="ghost"
-                                                size="sm"
-                                                icon="x-mark"
-                                                data-test="invitation-cancel-button"
-                                            />
-                                        </flux:tooltip>
-                                    </flux:modal.trigger>
+                                    <button
+                                        type="button"
+                                        x-data
+                                        x-on:click="$store.modals.open('cancel-invitation-{{ $invitation['code'] }}')"
+                                        class="flex h-8 w-8 items-center justify-center rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
+                                        title="{{ __('Cancel invitation') }}"
+                                        data-test="invitation-cancel-button"
+                                    >
+                                        <x-icon name="x" class="h-4 w-4 text-destructive"/>
+                                    </button>
                                 @endif
                             </div>
                             @if ($this->permissions->canCancelInvitation)
@@ -290,23 +285,21 @@ new class extends Component
             @endif
 
             @if ($this->permissions->canDeleteTeam && ! $teamData['is_personal'])
-                <div class="space-y-6">
+                <div class="space-y-4">
                     <div>
-                        <flux:heading>{{ __('Delete team') }}</flux:heading>
-                        <flux:subheading>{{ __('Permanently delete your team') }}</flux:subheading>
+                        <h3 class="text-sm font-semibold">{{ __('Delete team') }}</h3>
+                        <p class="text-xs text-muted-foreground mt-0.5">{{ __('Permanently delete your team') }}</p>
                     </div>
 
-                    <div class="space-y-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-200/10 dark:bg-red-900/20 dark:text-red-100">
+                    <div class="space-y-4 rounded-xl border border-rose-500/20 bg-rose-500/5 p-5">
                         <div>
-                            <p class="font-medium">{{ __('Warning') }}</p>
-                            <p class="text-sm">{{ __('Please proceed with caution, this cannot be undone.') }}</p>
+                            <p class="text-sm font-medium text-rose-600 dark:text-rose-400">{{ __('Warning') }}</p>
+                            <p class="text-sm text-muted-foreground mt-0.5">{{ __('Please proceed with caution, this cannot be undone.') }}</p>
                         </div>
 
-                        <flux:modal.trigger name="delete-team">
-                            <flux:button variant="danger" data-test="delete-team-button">
-                                {{ __('Delete team') }}
-                            </flux:button>
-                        </flux:modal.trigger>
+                        <x-ui.button variant="destructive" x-data x-on:click="$store.modals.open('delete-team')" data-test="delete-team-button">
+                            {{ __('Delete team') }}
+                        </x-ui.button>
                     </div>
                 </div>
             @endif

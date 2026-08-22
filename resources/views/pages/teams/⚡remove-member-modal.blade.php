@@ -2,7 +2,7 @@
 
 use App\Models\Team;
 use App\Models\User;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Component;
 
@@ -48,25 +48,23 @@ new class extends Component {
 
         $this->dispatch('close-modal', name: $this->modalName);
 
-        Flux::toast(variant: 'success', text: __('Member removed.'));
+        Toast::dispatch($this, 'success', __('Member removed.'));
 
         $this->redirectRoute('teams.edit', ['team' => $this->team->slug], navigate: true);
     }
 }; ?>
 
-<flux:modal :name="$modalName" focusable class="max-w-lg">
-    <form wire:submit="removeMember" class="space-y-6">
-        <div>
-            <flux:heading size="lg">{{ __('Remove team member') }}</flux:heading>
-            <flux:subheading>
-                {{ __('Are you sure you want to remove :name from this team?', ['name' => $memberName]) }}
-            </flux:subheading>
-        </div>
-        <div class="flex justify-end space-x-2 rtl:space-x-reverse">
-            <flux:modal.close>
-                <flux:button variant="filled">{{ __('Cancel') }}</flux:button>
-            </flux:modal.close>
-            <flux:button variant="danger" type="submit" data-test="remove-member-confirm">{{ __('Remove member') }}</flux:button>
+<x-ui.modal :name="$modalName" max-width="max-w-md" :title="__('Remove team member')">
+    <form wire:submit="removeMember" class="space-y-5">
+        <p class="text-sm text-muted-foreground">
+            {{ __('Are you sure you want to remove :name from this team?', ['name' => $memberName]) }}
+        </p>
+
+        <div class="flex justify-end gap-2">
+            <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('{{ $modalName }}')">
+                {{ __('Cancel') }}
+            </x-ui.button>
+            <x-ui.button variant="destructive" type="submit" data-test="remove-member-confirm">{{ __('Remove member') }}</x-ui.button>
         </div>
     </form>
-</flux:modal>
+</x-ui.modal>

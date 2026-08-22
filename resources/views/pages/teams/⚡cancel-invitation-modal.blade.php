@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\Team;
-use Flux\Flux;
+use App\Support\Toast;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Component;
 
@@ -41,25 +41,23 @@ new class extends Component {
 
         $this->dispatch('close-modal', name: $this->modalName);
 
-        Flux::toast(variant: 'success', text: __('Invitation cancelled.'));
+        Toast::dispatch($this, 'success', __('Invitation cancelled.'));
 
         $this->redirectRoute('teams.edit', ['team' => $this->team->slug], navigate: true);
     }
 }; ?>
 
-<flux:modal :name="$modalName" focusable class="max-w-lg">
-    <form wire:submit="cancelInvitation" class="space-y-6">
-        <div>
-            <flux:heading size="lg">{{ __('Cancel invitation') }}</flux:heading>
-            <flux:subheading>
-                {{ __('Are you sure you want to cancel the invitation for :email?', ['email' => $invitationEmail]) }}
-            </flux:subheading>
-        </div>
-        <div class="flex justify-end space-x-2 rtl:space-x-reverse">
-            <flux:modal.close>
-                <flux:button variant="filled">{{ __('Keep invitation') }}</flux:button>
-            </flux:modal.close>
-            <flux:button variant="danger" type="submit" data-test="cancel-invitation-confirm">{{ __('Cancel invitation') }}</flux:button>
+<x-ui.modal :name="$modalName" max-width="max-w-md" :title="__('Cancel invitation')">
+    <form wire:submit="cancelInvitation" class="space-y-5">
+        <p class="text-sm text-muted-foreground">
+            {{ __('Are you sure you want to cancel the invitation for :email?', ['email' => $invitationEmail]) }}
+        </p>
+
+        <div class="flex justify-end gap-2">
+            <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('{{ $modalName }}')">
+                {{ __('Keep invitation') }}
+            </x-ui.button>
+            <x-ui.button variant="destructive" type="submit" data-test="cancel-invitation-confirm">{{ __('Cancel invitation') }}</x-ui.button>
         </div>
     </form>
-</flux:modal>
+</x-ui.modal>
