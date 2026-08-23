@@ -40,6 +40,7 @@
             'title' => __('SYSTEM'),
             'items' => [
                 ['icon' => 'user-circle', 'label' => __('Profile'), 'href' => route('admin.profile.show'), 'active' => request()->routeIs('admin.profile.*')],
+                ['icon' => 'shield-check', 'label' => __('Audit Logs'), 'href' => route('admin.audit-logs.index'), 'active' => request()->routeIs('admin.audit-logs.*')],
                 [
                     'icon' => 'settings',
                     'label' => __('Settings'),
@@ -55,7 +56,7 @@
         ],
     ];
 
-    $appName = config('app.name', 'SNT CSSC MIS');
+    $appName = \App\Models\Setting::appName();
 @endphp
 
 {{-- Desktop sidebar: fixed, collapsible --}}
@@ -66,12 +67,7 @@
     {{-- Expanded mode --}}
     <div class="flex flex-col h-full min-h-0" x-show="! collapsed">
         <div class="flex h-14 items-center justify-between px-4 border-b border-sidebar-border shrink-0">
-            <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center gap-2">
-                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
-                    <x-icon name="zap" class="h-4 w-4 text-emerald-500"/>
-                </span>
-                <span class="font-semibold text-sm tracking-tight">{{ $appName }}</span>
-            </a>
+            <x-app-logo :href="route('dashboard')"/>
             <button
                 type="button"
                 x-on:click="toggleSidebar()"
@@ -108,7 +104,7 @@
                                                     <a
                                                         href="{{ $child['href'] }}"
                                                         wire:navigate
-                                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($child['active'] ?? false) ? 'bg-sidebar-accent text-sidebar-foreground font-medium' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($child['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                                     >
                                                         <x-icon :name="$child['icon']" class="h-3.5 w-3.5 shrink-0"/>
                                                         <span class="truncate">{{ $child['label'] }}</span>
@@ -123,7 +119,7 @@
                                     <a
                                         href="{{ $item['href'] }}"
                                         wire:navigate
-                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-sidebar-accent text-sidebar-foreground font-medium' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                     >
                                         <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
                                         <span class="truncate">{{ $item['label'] }}</span>
@@ -138,7 +134,7 @@
 
         <div class="border-t border-sidebar-border px-3 py-3 shrink-0">
             <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
                 <span>{{ __('All systems online') }}</span>
             </div>
             <p class="mt-1 text-[10px] text-muted-foreground/60">v1.0.0</p>
@@ -168,7 +164,7 @@
                                     href="{{ $item['href'] ?? '#' }}"
                                     wire:navigate
                                     title="{{ $item['label'] }}"
-                                    class="flex items-center justify-center rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-sidebar-accent text-sidebar-foreground font-medium' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                    class="flex items-center justify-center rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                 >
                                     <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
                                 </a>
@@ -179,7 +175,7 @@
             @endforeach
         </nav>
         <div class="border-t border-sidebar-border px-3 py-3 flex justify-center shrink-0">
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
         </div>
     </div>
 </aside>
@@ -201,12 +197,7 @@
 >
     <div class="flex flex-col h-full">
         <div class="flex h-14 items-center justify-between px-4 border-b border-sidebar-border shrink-0">
-            <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center gap-2">
-                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
-                    <x-icon name="zap" class="h-4 w-4 text-emerald-500"/>
-                </span>
-                <span class="font-semibold text-sm tracking-tight">{{ $appName }}</span>
-            </a>
+            <x-app-logo :href="route('dashboard')"/>
             <button
                 type="button"
                 x-on:click="mobileOpen = false"
@@ -244,7 +235,7 @@
                                                         href="{{ $child['href'] }}"
                                                         wire:navigate
                                                         x-on:click="mobileOpen = false"
-                                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($child['active'] ?? false) ? 'bg-sidebar-accent text-sidebar-foreground font-medium' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($child['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                                     >
                                                         <x-icon :name="$child['icon']" class="h-3.5 w-3.5 shrink-0"/>
                                                         <span class="truncate">{{ $child['label'] }}</span>
@@ -260,7 +251,7 @@
                                         href="{{ $item['href'] }}"
                                         wire:navigate
                                         x-on:click="mobileOpen = false"
-                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-sidebar-accent text-sidebar-foreground font-medium' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                        class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                     >
                                         <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
                                         <span class="truncate">{{ $item['label'] }}</span>
@@ -275,7 +266,7 @@
 
         <div class="border-t border-sidebar-border px-3 py-3 shrink-0">
             <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
                 <span>{{ __('All systems online') }}</span>
             </div>
             <p class="mt-1 text-[10px] text-muted-foreground/60">v1.0.0</p>

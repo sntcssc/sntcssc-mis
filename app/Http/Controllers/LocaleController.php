@@ -17,7 +17,7 @@ class LocaleController extends Controller
     public function __invoke(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'locale' => ['required', 'string', Rule::in(SetAppLocale::SUPPORTED)],
+            'locale' => ['required', 'string', Rule::in(SetAppLocale::getSupportedLocales())],
         ]);
 
         session(['locale' => $validated['locale']]);

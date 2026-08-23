@@ -14,7 +14,7 @@
                     {{ $slot }}
 
                     <p class="mt-6 text-center text-xs text-muted-foreground">
-                        &copy; {{ date('Y') }} {{ config('app.name', 'SNT CSSC MIS') }}. {{ __('All rights reserved.') }}
+                        {{ \App\Models\Setting::copyrightText() }}
                     </p>
                 </div>
             </div>

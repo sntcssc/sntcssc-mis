@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Services\FileUploadService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +89,13 @@ new #[Layout('layouts.app')] #[Title('SEO Settings')] class extends Component {
                 }
 
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'setting_updated',
+                    description: "Updated SEO and search indexing settings (Title: {$this->form['meta_title']}).",
+                    newValues: $this->form,
+                    userId: $userId
+                );
             });
 
             Toast::dispatch($this, 'success', __('SEO settings saved successfully.'));

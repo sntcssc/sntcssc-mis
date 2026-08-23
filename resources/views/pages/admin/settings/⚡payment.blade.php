@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -105,6 +106,13 @@ new #[Layout('layouts.app')] #[Title('Payment Gateway Settings')] class extends 
                 }
 
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'setting_updated',
+                    description: 'Updated payment gateway configuration (Master: '.($this->form['enabled'] ? 'Enabled' : 'Disabled').', Razorpay: '.($this->form['razorpay_enabled'] ? 'On' : 'Off').', PhonePe: '.($this->form['phonepe_enabled'] ? 'On' : 'Off').').',
+                    newValues: collect($this->form)->except($secrets)->all(),
+                    userId: $userId
+                );
             });
 
             Toast::dispatch($this, 'success', __('Payment gateway settings saved successfully.'));

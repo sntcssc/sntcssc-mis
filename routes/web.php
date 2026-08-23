@@ -35,6 +35,7 @@ Route::prefix('{current_team}')
         Route::livewire('system/settings/payment', 'pages::admin.settings.payment')->name('admin.settings.payment');
         Route::livewire('system/settings/sms', 'pages::admin.settings.sms')->name('admin.settings.sms');
         Route::livewire('system/settings/system', 'pages::admin.settings.system')->name('admin.settings.system');
+        Route::livewire('system/audit-logs', 'pages::admin.audit-logs')->name('admin.audit-logs.index');
         Route::livewire('roles', 'pages::admin.roles')->name('admin.roles.index');
         Route::livewire('reports', 'pages::admin.reports')->name('admin.reports.index');
         Route::livewire('reports/saved', 'pages::admin.reports-saved')->name('admin.reports.saved');

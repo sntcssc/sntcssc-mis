@@ -1,6 +1,6 @@
 @props([
     'icon' => 'activity',
-    'color' => 'emerald',
+    'color' => 'primary',
     'label' => null,
     'value' => null,
     'hint' => null,
@@ -8,6 +8,7 @@
 
 @php
     $colors = [
+        'primary' => 'bg-primary/15 text-primary',
         'emerald' => 'bg-emerald-500/15 text-emerald-500',
         'amber' => 'bg-amber-500/15 text-amber-500',
         'rose' => 'bg-rose-500/15 text-rose-500',

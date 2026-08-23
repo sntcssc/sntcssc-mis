@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Services\FileUploadService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\DB;
@@ -36,13 +37,21 @@ new #[Layout('layouts.app')] #[Title('General Settings')] class extends Componen
 
     public function mount(): void
     {
-        $settings = Setting::query()->where('group', 'general')->get()->keyBy('key');
+        $settings = Setting::query()->whereIn('group', ['general', 'appearance'])->get()->keyBy('key');
 
         foreach ($this->form as $key => $default) {
             $fullKey = "general.{$key}";
             if (isset($settings[$fullKey])) {
                 $this->form[$key] = (string) ($settings[$fullKey]->rawValue() ?? $default);
             }
+        }
+
+        if (empty($this->form['site_logo']) && isset($settings['appearance.logo'])) {
+            $this->form['site_logo'] = (string) ($settings['appearance.logo']->rawValue() ?? '');
+        }
+
+        if (empty($this->form['site_favicon']) && isset($settings['appearance.icon'])) {
+            $this->form['site_favicon'] = (string) ($settings['appearance.icon']->rawValue() ?? '');
         }
     }
 
@@ -112,13 +121,28 @@ new #[Layout('layouts.app')] #[Title('General Settings')] class extends Componen
                     $setting->save();
                 }
 
+                // Sync brand assets to appearance settings
+                if (! empty($this->form['site_logo'])) {
+                    Setting::set('appearance.logo', $this->form['site_logo'], $userId);
+                }
+                if (! empty($this->form['site_favicon'])) {
+                    Setting::set('appearance.icon', $this->form['site_favicon'], $userId);
+                }
+
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'setting_updated',
+                    description: "Updated general system settings (App: {$this->form['app_name']}, Site: {$this->form['site_name']}).",
+                    newValues: $this->form,
+                    userId: $userId
+                );
             });
 
             Toast::dispatch($this, 'success', __('General settings saved successfully.'));
         } catch (\Throwable $e) {
             Log::error('Failed to save general settings: '.$e->getMessage(), ['exception' => $e]);
-            Toast::dispatch($this, 'error', __('Failed to save settings. Please try again.'));
+            Toast::dispatch($this, 'error', __('Failed to save general settings.'));
         }
     }
 }; ?>

@@ -17,7 +17,7 @@
         >
             <span
                 class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                :class="toast.type === 'danger' || toast.type === 'error' ? 'bg-rose-500/15 text-rose-500' : (toast.type === 'warning' ? 'bg-amber-500/15 text-amber-500' : (toast.type === 'info' ? 'bg-cyan-500/15 text-cyan-500' : 'bg-emerald-500/15 text-emerald-500'))"
+                :class="toast.type === 'danger' || toast.type === 'error' ? 'bg-rose-500/15 text-rose-500' : (toast.type === 'warning' ? 'bg-amber-500/15 text-amber-500' : (toast.type === 'info' ? 'bg-cyan-500/15 text-cyan-500' : 'bg-primary/15 text-primary'))"
             >
                 <x-icon name="check-circle-2" class="h-3.5 w-3.5" x-show="toast.type === 'success' || ! toast.type"/>
                 <x-icon name="alert-circle" class="h-3.5 w-3.5" x-show="toast.type === 'danger' || toast.type === 'error'"/>

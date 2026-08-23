@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Concerns\Auditable;
+use App\Services\FileUploadService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +14,7 @@ use Illuminate\Support\Facades\Crypt;
 
 class Setting extends Model
 {
+    use Auditable;
     use HasFactory;
     use SoftDeletes;
 
@@ -161,13 +164,17 @@ class Setting extends Model
      */
     public static function get(string $key, mixed $default = null): mixed
     {
-        $setting = static::allCached()->firstWhere('key', $key);
+        try {
+            $setting = static::allCached()->firstWhere('key', $key);
 
-        if (! $setting || ! $setting->status) {
+            if (! $setting || ! $setting->status) {
+                return $default;
+            }
+
+            return $setting->typed() ?? $default;
+        } catch (\Throwable) {
             return $default;
         }
-
-        return $setting->typed() ?? $default;
     }
 
     /**
@@ -203,13 +210,88 @@ class Setting extends Model
      */
     public static function allCached(): Collection
     {
-        return Cache::remember('snt.settings', now()->addDay(), function () {
-            return static::query()->where('status', true)->get();
-        });
+        try {
+            $cached = Cache::get('snt.settings');
+
+            if ($cached instanceof Collection) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+            // Cache corrupted or unserialize failure
+        }
+
+        Cache::forget('snt.settings');
+
+        try {
+            $settings = static::query()->where('status', true)->get();
+            Cache::put('snt.settings', $settings, now()->addDay());
+
+            return $settings;
+        } catch (\Throwable) {
+            return collect();
+        }
     }
 
     public static function flushCache(): void
     {
         Cache::forget('snt.settings');
+    }
+
+    /**
+     * Resolve the public URL of the active site/dashboard logo.
+     * Looks up general.site_logo first, then appearance.logo.
+     * Returns null if no custom logo is uploaded.
+     */
+    public static function logoUrl(): ?string
+    {
+        $logo = static::get('general.site_logo') ?: static::get('appearance.logo');
+
+        if (! $logo) {
+            return null;
+        }
+
+        return FileUploadService::url((string) $logo);
+    }
+
+    /**
+     * Resolve the public URL of the active site favicon / dashboard icon.
+     * Looks up general.site_favicon first, then appearance.icon.
+     * Falls back to '/favicon.ico' if $fallback is true, or null otherwise.
+     */
+    public static function faviconUrl(bool $fallback = true): ?string
+    {
+        $favicon = static::get('general.site_favicon') ?: static::get('appearance.icon');
+
+        if ($favicon) {
+            return FileUploadService::url((string) $favicon);
+        }
+
+        return $fallback ? '/favicon.ico' : null;
+    }
+
+    /**
+     * Resolve the application name.
+     */
+    public static function appName(): string
+    {
+        return (string) static::get('general.app_name', static::get('general.site_name', config('app.name', 'SNT CSSC MIS')));
+    }
+
+    /**
+     * Resolve the site name.
+     */
+    public static function siteName(): string
+    {
+        return (string) static::get('general.site_name', config('app.name', 'SNT CSSC MIS'));
+    }
+
+    /**
+     * Resolve the formatted copyright string with dynamic year.
+     */
+    public static function copyrightText(): string
+    {
+        $template = (string) static::get('general.copyright_text', '© :year SNT CSSC. All rights reserved.');
+
+        return str_replace(':year', (string) date('Y'), $template);
     }
 }

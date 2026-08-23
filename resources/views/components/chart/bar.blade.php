@@ -54,7 +54,7 @@
                     class="flex-1 h-full flex items-end justify-center gap-[2px] group"
                     title="{{ $row['label'] }} — {{ $currentLabel }}: {{ number_format($row['current'] ?? 0) }} · {{ $previousLabel }}: {{ number_format($row['previous'] ?? 0) }}"
                 >
-                    <div class="w-2.5 rounded-t-[3px] bg-emerald-500 transition-colors group-hover:bg-emerald-400" style="height: {{ $currentHeight }}%"></div>
+                    <div class="w-2.5 rounded-t-[3px] bg-primary transition-opacity group-hover:opacity-80" style="height: {{ $currentHeight }}%"></div>
                     <div class="w-2.5 rounded-t-[3px] bg-slate-200 dark:bg-zinc-800 transition-colors group-hover:bg-slate-300 dark:group-hover:bg-zinc-700" style="height: {{ $previousHeight }}%"></div>
                 </div>
             @endforeach

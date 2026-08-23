@@ -36,15 +36,21 @@
 @endphp
 
 <header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 lg:px-6">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 min-w-0">
         <button
             type="button"
             x-on:click="mobileOpen = ! mobileOpen"
-            class="flex lg:hidden h-9 w-9 items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+            class="flex lg:hidden h-9 w-9 items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer shrink-0"
             aria-label="{{ __('Toggle menu') }}"
         >
             <x-icon name="menu" class="h-5 w-5"/>
         </button>
+
+        {{-- Mobile Application Branding --}}
+        <a href="{{ route('dashboard') }}" wire:navigate class="flex lg:hidden items-center gap-2 min-w-0 max-w-[170px] xs:max-w-[210px] truncate hover:opacity-90">
+            <x-app-logo-icon size="h-7 w-7" iconSize="h-3.5 w-3.5" />
+            <span class="font-semibold text-xs sm:text-sm tracking-tight text-foreground truncate">{{ \App\Models\Setting::appName() }}</span>
+        </a>
 
         <nav class="hidden sm:flex items-center text-sm text-muted-foreground gap-1">
             @foreach ($breadcrumbs as $crumb)

@@ -83,7 +83,7 @@
 
     {{-- Live Preview for New Upload --}}
     @if ($file)
-        <div class="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+        <div class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
             <div class="flex items-center gap-3 min-w-0">
                 @if ($isImage && method_exists($file, 'temporaryUrl'))
                     <img
@@ -92,7 +92,7 @@
                         class="h-12 w-12 rounded-md object-cover border border-emerald-500/30 shrink-0 bg-background"
                     />
                 @else
-                    <div class="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
                         <x-icon name="file-text" class="h-5 w-5"/>
                     </div>
                 @endif
@@ -100,7 +100,7 @@
                 <div class="min-w-0 flex-1 text-left">
                     <div class="flex items-center gap-2">
                         <p class="text-xs font-semibold text-foreground truncate">{{ method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : 'Uploaded file' }}</p>
-                        <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">{{ __('Ready to save') }}</span>
+                        <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold bg-primary/15 text-primary">{{ __('Ready to save') }}</span>
                     </div>
                     <p class="text-[10px] text-muted-foreground">
                         {{ method_exists($file, 'getSize') ? \App\Services\FileUploadService::humanSize($file->getSize()) : '' }}

@@ -16,7 +16,7 @@
     @if ($src)
         <img src="{{ $src }}" alt="{{ $name }}" class="aspect-square size-full object-cover"/>
     @else
-        <span class="flex size-full items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500 font-semibold">
+        <span class="flex size-full items-center justify-center rounded-full bg-primary/15 text-primary font-semibold">
             {{ $initials }}
         </span>
     @endif

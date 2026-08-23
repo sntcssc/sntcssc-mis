@@ -1,5 +1,10 @@
+@php
+    $appDarkMode = (string) \App\Models\Setting::get('appearance.dark_mode', 'system');
+    $cookieTheme = request()->cookie('theme');
+    $isDarkInitial = $cookieTheme === 'dark' || ($cookieTheme === null && $appDarkMode === 'dark');
+@endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => request()->cookie('theme') === 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => $isDarkInitial])>
     <head>
         @include('partials.head')
     </head>
@@ -33,12 +38,12 @@
 
                 <footer class="border-t border-border px-3 sm:px-4 lg:px-6 py-4">
                     <div class="max-w-[1440px] flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] sm:text-xs text-muted-foreground">
-                        <span>&copy; {{ date('Y') }} {{ config('app.name', 'SNT CSSC MIS') }}. {{ __('All rights reserved.') }}</span>
+                        <span>{{ \App\Models\Setting::copyrightText() }}</span>
                         <div class="flex items-center gap-4">
                             <a href="https://laravel.com/docs" target="_blank" class="hover:text-foreground transition-colors">{{ __('Documentation') }}</a>
                             <a href="#" class="hover:text-foreground transition-colors">{{ __('Support') }}</a>
                             <span class="flex items-center gap-1.5">
-                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
                                 v1.0.0
                             </span>
                         </div>

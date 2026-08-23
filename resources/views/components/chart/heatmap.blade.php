@@ -13,19 +13,19 @@
             return 'bg-gray-100 dark:bg-zinc-900/50';
         }
         if ($value <= 0.2) {
-            return 'bg-emerald-900/40';
+            return 'bg-primary/10';
         }
         if ($value <= 0.4) {
-            return 'bg-emerald-800/50';
+            return 'bg-primary/20';
         }
         if ($value <= 0.6) {
-            return 'bg-emerald-700/60';
+            return 'bg-primary/40';
         }
         if ($value <= 0.8) {
-            return 'bg-emerald-600/70';
+            return 'bg-primary/60';
         }
 
-        return 'bg-emerald-500/80';
+        return 'bg-primary/80';
     };
 @endphp
 
@@ -44,11 +44,11 @@
                 <span class="text-[10px] text-muted-foreground">Low</span>
                 <div class="flex gap-px">
                     <span class="h-2.5 w-3 rounded-sm bg-gray-100 dark:bg-zinc-900/50"></span>
-                    <span class="h-2.5 w-3 rounded-sm bg-emerald-900/40"></span>
-                    <span class="h-2.5 w-3 rounded-sm bg-emerald-800/50"></span>
-                    <span class="h-2.5 w-3 rounded-sm bg-emerald-700/60"></span>
-                    <span class="h-2.5 w-3 rounded-sm bg-emerald-600/70"></span>
-                    <span class="h-2.5 w-3 rounded-sm bg-emerald-500/80"></span>
+                    <span class="h-2.5 w-3 rounded-sm bg-primary/10"></span>
+                    <span class="h-2.5 w-3 rounded-sm bg-primary/20"></span>
+                    <span class="h-2.5 w-3 rounded-sm bg-primary/40"></span>
+                    <span class="h-2.5 w-3 rounded-sm bg-primary/60"></span>
+                    <span class="h-2.5 w-3 rounded-sm bg-primary/80"></span>
                 </div>
                 <span class="text-[10px] text-muted-foreground">High</span>
             </div>

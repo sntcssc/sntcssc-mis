@@ -1,9 +1,9 @@
 <x-layouts::auth :title="__('Reset password')">
     <div class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm">
         <div class="flex flex-col items-center mb-6">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 mb-3">
-                <x-icon name="zap" class="h-5 w-5 text-emerald-500"/>
-            </div>
+            <a href="{{ route('home') }}" wire:navigate class="mb-3 transition-opacity hover:opacity-90">
+                <x-app-logo-icon size="h-11 w-11" iconSize="h-5 w-5" />
+            </a>
             <h1 class="text-xl font-semibold">{{ __('Reset password') }}</h1>
             <p class="text-sm text-muted-foreground mt-1 text-center">{{ __('Please enter your new password below') }}</p>
         </div>

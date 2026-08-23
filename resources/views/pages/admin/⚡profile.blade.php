@@ -2,6 +2,8 @@
 
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
+use App\Models\Setting;
+use App\Services\FileUploadService;
 use App\Support\Toast;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
@@ -10,10 +12,12 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
-new #[Layout('layouts.app')] #[Title('Profile')] class extends Component {
+new #[Layout('layouts.app')] #[Title('Profile & Preferences')] class extends Component {
     use PasswordValidationRules;
     use ProfileValidationRules;
+    use WithFileUploads;
 
     public string $name = '';
     public string $email = '';
@@ -24,11 +28,52 @@ new #[Layout('layouts.app')] #[Title('Profile')] class extends Component {
 
     public string $language = 'en';
     public string $timezone = 'Asia/Kolkata';
+    public string $date_format = 'd M Y';
+    public string $time_format = 'h:i A';
+
+    public $avatarFile = null;
 
     public function mount(): void
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+
+        $this->language = (string) (session('locale') ?? Setting::get('localization.language', 'en'));
+        $this->timezone = (string) Setting::get('localization.timezone', 'Asia/Kolkata');
+        $this->date_format = (string) Setting::get('localization.date_format', 'd M Y');
+        $this->time_format = (string) Setting::get('localization.time_format', 'h:i A');
+    }
+
+    public function updatedAvatarFile(): void
+    {
+        $this->validate([
+            'avatarFile' => ['required', 'image', 'mimes:png,jpg,jpeg,webp', 'max:5120'],
+        ]);
+
+        $user = Auth::user();
+        $user->avatar = FileUploadService::store(
+            file: $this->avatarFile,
+            folder: 'avatars',
+            prefix: 'user_avatar',
+            oldPath: $user->avatar ?: null
+        );
+        $user->save();
+
+        $this->avatarFile = null;
+        Toast::dispatch($this, 'success', __('Profile photo updated successfully.'));
+    }
+
+    public function removeAvatar(): void
+    {
+        $user = Auth::user();
+        if ($user->avatar) {
+            FileUploadService::delete($user->avatar);
+            $user->avatar = null;
+            $user->save();
+        }
+
+        $this->avatarFile = null;
+        Toast::dispatch($this, 'info', __('Profile photo removed.'));
     }
 
     public function updateProfileInformation(): void
@@ -87,7 +132,26 @@ new #[Layout('layouts.app')] #[Title('Profile')] class extends Component {
 
     public function savePreferences(): void
     {
-        Toast::dispatch($this, 'success', __('Preferences saved (design preview).'));
+        $this->validate([
+            'language' => ['required', 'string', 'in:en,hi,bn'],
+            'timezone' => ['required', 'string', 'max:100'],
+            'date_format' => ['required', 'string', 'max:50'],
+            'time_format' => ['required', 'string', 'max:50'],
+        ]);
+
+        $userId = Auth::id();
+
+        Setting::set('localization.language', $this->language, $userId);
+        Setting::set('localization.timezone', $this->timezone, $userId);
+        Setting::set('localization.date_format', $this->date_format, $userId);
+        Setting::set('localization.time_format', $this->time_format, $userId);
+
+        Setting::flushCache();
+
+        session(['locale' => $this->language]);
+        app()->setLocale($this->language);
+
+        Toast::dispatch($this, 'success', __('Preferences saved and synchronized with system settings.'));
     }
 }; ?>
 
@@ -111,12 +175,54 @@ new #[Layout('layouts.app')] #[Title('Profile')] class extends Component {
         <div class="space-y-3 sm:space-y-4">
             <div class="rounded-xl border border-border bg-card p-4 sm:p-5">
                 <div class="flex flex-col items-center py-4">
-                    <div class="relative">
-                        <x-ui.avatar :name="$name" :initials="auth()->user()->initials()" size="size-20 text-2xl"/>
-                        <button type="button" class="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 cursor-pointer transition-colors" title="{{ __('Upload photo (coming soon)') }}">
-                            <x-icon name="pencil" class="h-3 w-3"/>
-                        </button>
+                    <div class="relative group">
+                        <div class="relative overflow-hidden rounded-full ring-2 ring-primary/20 shadow-md">
+                            @if ($avatarFile && method_exists($avatarFile, 'temporaryUrl'))
+                                <img src="{{ $avatarFile->temporaryUrl() }}" alt="{{ $name }}" class="size-20 rounded-full object-cover"/>
+                            @else
+                                <x-ui.avatar :name="$name" :initials="auth()->user()->initials()" :src="auth()->user()->avatarUrl()" size="size-20 text-2xl"/>
+                            @endif
+
+                            {{-- Upload spinner --}}
+                            <div wire:loading wire:target="avatarFile" class="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-xs rounded-full">
+                                <x-icon name="refresh-cw" class="h-5 w-5 animate-spin text-primary"/>
+                            </div>
+                        </div>
+
+                        {{-- Hidden file input --}}
+                        <input
+                            type="file"
+                            id="admin-avatar-upload"
+                            wire:model="avatarFile"
+                            accept="image/png,image/jpeg,image/webp"
+                            class="sr-only"
+                        />
+
+                        {{-- Camera button --}}
+                        <label
+                            for="admin-avatar-upload"
+                            class="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90 cursor-pointer transition-transform hover:scale-105"
+                            title="{{ __('Change profile photo') }}"
+                        >
+                            <x-icon name="camera" class="h-3.5 w-3.5"/>
+                        </label>
                     </div>
+
+                    @error('avatarFile')
+                        <p class="mt-2 text-[11px] text-destructive text-center">{{ $message }}</p>
+                    @enderror
+
+                    @if (auth()->user()->avatar)
+                        <button
+                            type="button"
+                            wire:click="removeAvatar"
+                            class="mt-2 text-[11px] text-destructive hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                            <x-icon name="trash-2" class="h-3 w-3"/>
+                            {{ __('Remove photo') }}
+                        </button>
+                    @endif
+
                     <h2 class="mt-3 text-base font-semibold">{{ $name }}</h2>
                     <p class="text-xs text-muted-foreground">{{ $email }}</p>
                     @if (auth()->user()->email_verified_at)
@@ -217,23 +323,67 @@ new #[Layout('layouts.app')] #[Title('Profile')] class extends Component {
             </div>
 
             <div class="rounded-xl border border-border bg-card p-4 sm:p-6">
-                <h3 class="text-sm font-semibold">{{ __('Preferences') }}</h3>
-                <p class="text-xs text-muted-foreground mt-0.5">{{ __('Interface language and timezone.') }}</p>
-
-                <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Language') }}</label>
-                        <x-ui.select wire:model="language" class="mt-2" :options="['en' => 'English', 'hi' => 'हिन्दी', 'bn' => 'বাংলা']"/>
+                <div class="flex items-center gap-2 pb-3 border-b border-border">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <x-icon name="sliders" class="h-4 w-4"/>
                     </div>
                     <div>
-                        <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Timezone') }}</label>
-                        <x-ui.select wire:model="timezone" class="mt-2" :options="['Asia/Kolkata' => 'Asia/Kolkata (IST)', 'Asia/Dubai' => 'Asia/Dubai (GST)', 'UTC' => 'UTC']"/>
+                        <h3 class="text-sm font-semibold">{{ __('Preferences') }}</h3>
+                        <p class="text-xs text-muted-foreground">{{ __('Interface language, timezone, and date/time formats synchronized with system settings.') }}</p>
                     </div>
                 </div>
 
-                <div class="mt-4 flex justify-end">
-                    <x-ui.button variant="outline" wire:click="savePreferences">{{ __('Save preferences') }}</x-ui.button>
-                </div>
+                <form wire:submit="savePreferences" class="mt-4 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <x-ui.select
+                            wire:model="language"
+                            :label="__('Interface Language')"
+                            :options="[
+                                'en' => 'English',
+                                'hi' => 'हिन्दी (Hindi)',
+                                'bn' => 'বাংলা (Bengali)',
+                            ]"
+                        />
+
+                        <x-ui.select
+                            wire:model="timezone"
+                            :label="__('Timezone')"
+                            :options="[
+                                'Asia/Kolkata' => 'Asia/Kolkata (IST +5:30)',
+                                'Asia/Dhaka' => 'Asia/Dhaka (BST +6:00)',
+                                'Asia/Dubai' => 'Asia/Dubai (GST +4:00)',
+                                'UTC' => 'UTC (Greenwich +0:00)',
+                                'America/New_York' => 'America/New_York (EST -5:00)',
+                                'Europe/London' => 'Europe/London (GMT +0:00)',
+                            ]"
+                        />
+
+                        <x-ui.select
+                            wire:model="date_format"
+                            :label="__('Date Display Format')"
+                            :options="[
+                                'd M Y' => '23 Aug 2026 (d M Y)',
+                                'd/m/Y' => '23/08/2026 (d/m/Y)',
+                                'Y-m-d' => '2026-08-23 (Y-m-d)',
+                                'd-m-Y' => '23-08-2026 (d-m-Y)',
+                                'jS F Y' => '23rd August 2026 (jS F Y)',
+                            ]"
+                        />
+
+                        <x-ui.select
+                            wire:model="time_format"
+                            :label="__('Time Display Format')"
+                            :options="[
+                                'h:i A' => '05:30 PM (12-Hour)',
+                                'H:i' => '17:30 (24-Hour)',
+                            ]"
+                        />
+                    </div>
+
+                    <div class="mt-4 flex justify-end">
+                        <x-ui.button type="submit">{{ __('Save preferences') }}</x-ui.button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

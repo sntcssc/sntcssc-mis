@@ -7,12 +7,12 @@
                 mobileNote: false,
             }"
         >
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 mb-3">
-                <x-icon name="zap" class="h-5 w-5 text-emerald-500"/>
-            </div>
+            <a href="{{ route('home') }}" wire:navigate class="mb-3 transition-opacity hover:opacity-90">
+                <x-app-logo-icon size="h-11 w-11" iconSize="h-5 w-5" />
+            </a>
             <h1 class="text-xl font-semibold">{{ __('Sign in') }}</h1>
             <p class="text-sm text-muted-foreground mt-1 text-center">
-                <span x-show="mode === 'email'">{{ __('Welcome back to :app. Use your account email and password.', ['app' => config('app.name')]) }}</span>
+                <span x-show="mode === 'email'">{{ __('Welcome back to :app. Use your account email and password.', ['app' => \App\Models\Setting::appName()]) }}</span>
                 <span x-show="mode === 'mobile'" x-cloak>{{ __('Enter your mobile number to receive a one-time verification code.') }}</span>
             </p>
 

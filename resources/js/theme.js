@@ -17,12 +17,16 @@
         }
     }
 
+    function defaultSetting() {
+        return window.APP_DEFAULT_THEME || 'system';
+    }
+
     function systemPrefersDark() {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
 
     function resolvedTheme() {
-        const theme = storedTheme();
+        const theme = storedTheme() || defaultSetting();
 
         if (theme === 'dark' || theme === 'light') {
             return theme;

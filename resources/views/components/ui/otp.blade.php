@@ -74,8 +74,8 @@
                 x-on:input="onInput(index)"
                 x-on:keydown="onKeydown(index, $event)"
                 x-on:paste="onPaste($event, index)"
-                :class="digit ? 'border-emerald-500/50' : 'border-input'"
-                class="h-13 w-11 sm:h-14 sm:w-13 text-center text-xl font-bold rounded-xl border-2 bg-secondary/30 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                :class="digit ? 'border-primary/50' : 'border-input'"
+                class="h-13 w-11 sm:h-14 sm:w-13 text-center text-xl font-bold rounded-xl border-2 bg-secondary/30 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
         </template>
     </div>

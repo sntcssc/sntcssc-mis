@@ -167,7 +167,7 @@ test('email settings page renders, saves configuration, and sends test email', f
 
 test('localization settings page renders and saves date, time and locale standards', function () {
     Livewire::test('pages::admin.settings.localization')
-        ->assertSee('Localization & Format Settings')
+        ->assertSee('Localization & Language Settings')
         ->set('form.language', 'bn')
         ->set('form.timezone', 'Asia/Kolkata')
         ->set('form.date_format', 'd-m-Y')
@@ -242,7 +242,7 @@ test('sms gateway settings page renders and saves 2factor parameters and dispatc
 
 test('system settings page renders, saves flags and runs maintenance utilities', function () {
     Livewire::test('pages::admin.settings.system')
-        ->assertSee('System & Server Settings')
+        ->assertSee('System & Maintenance Settings')
         ->set('form.maintenance_mode', true)
         ->set('form.debug_mode', false)
         ->set('form.app_name', 'SNT CSSC Management Portal')

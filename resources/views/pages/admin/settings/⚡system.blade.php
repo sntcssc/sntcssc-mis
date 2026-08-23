@@ -1,17 +1,22 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component {
+new #[Layout('layouts.app')] #[Title('System & Maintenance Settings')] class extends Component {
     public array $form = [
         'maintenance_mode' => false,
+        'maintenance_secret' => '',
+        'maintenance_token' => '',
+        'maintenance_message' => 'The application is currently undergoing scheduled maintenance. Please check back shortly.',
         'debug_mode' => false,
         'app_name' => 'SNT CSSC MIS',
         'app_version' => '1.0.0',
@@ -41,12 +46,41 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 }
             }
         }
+
+        if (empty($this->form['maintenance_secret']) && ! empty($this->form['maintenance_token'])) {
+            $this->form['maintenance_secret'] = $this->form['maintenance_token'];
+        }
+        if (empty($this->form['maintenance_secret'])) {
+            $this->form['maintenance_secret'] = Str::random(16);
+        }
+        $this->form['maintenance_token'] = $this->form['maintenance_secret'];
+    }
+
+    public function generateNewSecret(): void
+    {
+        $this->form['maintenance_secret'] = Str::random(24);
+        $this->form['maintenance_token'] = $this->form['maintenance_secret'];
+        Toast::dispatch($this, 'info', __('New secret bypass token generated. Remember to save changes.'));
+    }
+
+    public function regenerateToken(): void
+    {
+        $this->generateNewSecret();
     }
 
     public function save(): void
     {
+        if ($this->form['maintenance_token'] !== '' && $this->form['maintenance_token'] !== $this->form['maintenance_secret']) {
+            $this->form['maintenance_secret'] = $this->form['maintenance_token'];
+        } else {
+            $this->form['maintenance_token'] = $this->form['maintenance_secret'];
+        }
+
         $this->validate([
             'form.maintenance_mode' => ['boolean'],
+            'form.maintenance_secret' => ['nullable', 'string', 'max:100'],
+            'form.maintenance_token' => ['nullable', 'string', 'max:100'],
+            'form.maintenance_message' => ['nullable', 'string', 'max:500'],
             'form.debug_mode' => ['boolean'],
             'form.app_name' => ['required', 'string', 'max:255'],
             'form.app_version' => ['required', 'string', 'max:50'],
@@ -70,6 +104,7 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                         'maintenance_mode', 'debug_mode' => Setting::TYPE_BOOLEAN,
                         'max_upload_size', 'session_lifetime' => Setting::TYPE_NUMBER,
                         'cache_driver' => Setting::TYPE_SELECT,
+                        'maintenance_message' => Setting::TYPE_TEXT,
                         default => Setting::TYPE_STRING,
                     };
 
@@ -90,9 +125,20 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 }
 
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'maintenance_mode_toggled',
+                    description: $this->form['maintenance_mode'] ? 'Application Maintenance Mode ENABLED with Secret Token.' : 'Application Maintenance Mode DISABLED.',
+                    newValues: [
+                        'maintenance_mode' => $this->form['maintenance_mode'],
+                        'debug_mode' => $this->form['debug_mode'],
+                        'app_name' => $this->form['app_name'],
+                    ],
+                    userId: $userId
+                );
             });
 
-            Toast::dispatch($this, 'success', __('System settings saved successfully.'));
+            Toast::dispatch($this, 'success', __('System settings and maintenance configuration saved.'));
         } catch (\Throwable $e) {
             Log::error('Failed to save system settings: '.$e->getMessage(), ['exception' => $e]);
             Toast::dispatch($this, 'error', __('Failed to save system settings.'));
@@ -139,8 +185,8 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
 
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-bold tracking-tight">{{ __('System & Server Settings') }}</h1>
-            <p class="text-xs text-muted-foreground mt-1">{{ __('Application environment flags, developer profiles, storage quotas and maintenance operations.') }}</p>
+            <h1 class="text-2xl font-bold tracking-tight">{{ __('System & Maintenance Settings') }}</h1>
+            <p class="text-xs text-muted-foreground mt-1">{{ __('Centralized application environment, maintenance mode with secret token bypass, cache drivers and quotas.') }}</p>
         </div>
 
         <x-ui.button wire:click="save" wire:loading.attr="disabled">
@@ -150,15 +196,15 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
     </div>
 
     <form wire:submit="save" class="space-y-6">
-        {{-- Section 1: Maintenance & Status --}}
+        {{-- Section 1: Maintenance Mode with Secret Token Bypass --}}
         <div class="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4 shadow-xs">
             <div class="flex items-center gap-2.5 pb-3 border-b border-border">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
                     <x-icon name="alert-triangle" class="h-4 w-4"/>
                 </div>
                 <div>
-                    <h2 class="text-sm font-semibold">{{ __('Application Status & Maintenance') }}</h2>
-                    <p class="text-[11px] text-muted-foreground">{{ __('Controls for routine server upgrades and developer diagnostics.') }}</p>
+                    <h2 class="text-sm font-semibold">{{ __('Application Status & Maintenance Mode') }}</h2>
+                    <p class="text-[11px] text-muted-foreground">{{ __('Lock the public interface while allowing authorized stakeholders to bypass using a secret URL token.') }}</p>
                 </div>
             </div>
 
@@ -166,8 +212,8 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 <div class="p-4 rounded-lg border border-border bg-secondary/10 space-y-2">
                     <x-ui.switch
                         wire:model="form.maintenance_mode"
-                        :label="__('Enable Maintenance Mode')"
-                        :description="__('Locks student and public access while admin functions stay operable.')"
+                        :label="__('Enable Application Maintenance Mode')"
+                        :description="__('Renders a 503 Maintenance page to students/public. Admin panel stays accessible.')"
                         :checked="(bool) $form['maintenance_mode']"
                     />
                 </div>
@@ -175,11 +221,58 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 <div class="p-4 rounded-lg border border-border bg-secondary/10 space-y-2">
                     <x-ui.switch
                         wire:model="form.debug_mode"
-                        :label="__('Enable Verbose Diagnostics (Debug Mode)')"
-                        :description="__('Shows detailed stack traces in dev/staging environments.')"
+                        :label="__('Enable Diagnostic Mode (Debug)')"
+                        :description="__('Detailed stack traces in dev/staging environments.')"
                         :checked="(bool) $form['debug_mode']"
                     />
                 </div>
+            </div>
+
+            {{-- Secret Token Configuration --}}
+            <div class="p-4 rounded-xl border border-border bg-secondary/20 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xs font-semibold text-foreground">{{ __('Secret Token Bypass Key') }}</h3>
+                        <p class="text-[11px] text-muted-foreground">{{ __('Anyone opening the app with this token (?secret=TOKEN) will receive a bypass cookie and can browse normally.') }}</p>
+                    </div>
+
+                    <button
+                        type="button"
+                        wire:click="generateNewSecret"
+                        class="text-xs text-primary hover:underline font-medium cursor-pointer flex items-center gap-1"
+                    >
+                        <x-icon name="refresh-cw" class="h-3 w-3"/>
+                        {{ __('Generate New Token') }}
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <x-ui.input
+                        wire:model="form.maintenance_secret"
+                        :label="__('Bypass Secret Token')"
+                        placeholder="e.g. snt_bypass_2026"
+                        class="font-mono text-xs"
+                    />
+
+                    <div>
+                        <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Bypass URL Link') }}</label>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input
+                                type="text"
+                                readonly
+                                value="{{ url('/') }}?secret={{ $form['maintenance_secret'] }}"
+                                class="h-9 flex-1 rounded-md border border-input bg-background/50 px-3 font-mono text-xs text-muted-foreground select-all"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <x-ui.textarea
+                    wire:model="form.maintenance_message"
+                    :label="__('Public Maintenance Notice Message')"
+                    rows="2"
+                    placeholder="We are currently upgrading server systems. Please check back shortly."
+                />
             </div>
         </div>
 
@@ -191,7 +284,7 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 </div>
                 <div>
                     <h2 class="text-sm font-semibold">{{ __('Build & Developer Credits') }}</h2>
-                    <p class="text-[11px] text-muted-foreground">{{ __('Internal application release notes and team contact.') }}</p>
+                    <p class="text-[11px] text-muted-foreground">{{ __('Internal application release metadata and contact references.') }}</p>
                 </div>
             </div>
 
@@ -247,7 +340,7 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                 </div>
                 <div>
                     <h2 class="text-sm font-semibold">{{ __('Storage Limits & Sessions') }}</h2>
-                    <p class="text-[11px] text-muted-foreground">{{ __('Upload size thresholds and session persistence.') }}</p>
+                    <p class="text-[11px] text-muted-foreground">{{ __('Upload size limits and session timeouts.') }}</p>
                 </div>
             </div>
 
@@ -257,7 +350,7 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
                     :label="__('Max Upload Limit (MB)') . ' *'"
                     type="number"
                     placeholder="10"
-                    hint="{{ __('Max size per student document / receipt.') }}"
+                    hint="{{ __('Max size per document / receipt.') }}"
                 />
 
                 <x-ui.input
@@ -342,3 +435,4 @@ new #[Layout('layouts.app')] #[Title('System Settings')] class extends Component
         </div>
     </form>
 </div>
+

@@ -81,8 +81,8 @@
         <div>
             <div class="flex items-center gap-2 flex-wrap">
                 <h1 class="text-lg sm:text-xl font-semibold">{{ $greeting }}, {{ $user->name }}</h1>
-                <span class="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
-                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    <span class="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
                     {{ __('Live') }}
                 </span>
             </div>
@@ -145,7 +145,7 @@
                 <div class="flex items-center gap-2">
                     <h3 class="text-sm font-semibold">{{ __('Operations') }}</h3>
                     <span class="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
                         {{ __('Real-time · auto-refresh 30s') }}
                     </span>
                 </div>
@@ -181,7 +181,7 @@
         <div class="rounded-xl border border-border bg-card p-4 sm:p-5">
             <span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{{ __('This week') }}</span>
             <h2 class="text-2xl sm:text-3xl font-bold tracking-tight mt-1">₹9,42,500</h2>
-            <p class="text-xs text-emerald-500 font-medium mt-1">+8.2% {{ __('vs last week') }}</p>
+            <p class="text-xs text-primary font-medium mt-1">+8.2% {{ __('vs last week') }}</p>
             <div class="mt-4 space-y-2.5">
                 <div class="flex items-center justify-between text-xs">
                     <span class="text-muted-foreground">{{ __('Enrollments') }}</span>
@@ -220,17 +220,17 @@
                 <div class="min-w-[120px]">
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Applications') }}</p>
                     <p class="text-base sm:text-lg font-bold mt-0.5">486</p>
-                    <p class="text-xs text-emerald-500 font-medium">+18.4%</p>
+                    <p class="text-xs text-primary font-medium">+18.4%</p>
                 </div>
                 <div class="min-w-[120px]">
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Admissions') }}</p>
                     <p class="text-base sm:text-lg font-bold mt-0.5">341</p>
-                    <p class="text-xs text-emerald-500 font-medium">+12.9%</p>
+                    <p class="text-xs text-primary font-medium">+12.9%</p>
                 </div>
                 <div class="min-w-[120px]">
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Conversion') }}</p>
                     <p class="text-base sm:text-lg font-bold mt-0.5">70.2%</p>
-                    <p class="text-xs text-emerald-500 font-medium">+3.1%</p>
+                    <p class="text-xs text-primary font-medium">+3.1%</p>
                 </div>
             </div>
 
@@ -252,7 +252,7 @@
         <div class="xl:col-span-2 rounded-xl border border-border bg-card p-4 sm:p-5">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold">{{ __('Enrollment insights') }}</h3>
-                <a href="{{ route('admin.courses.index') }}" wire:navigate class="text-xs text-emerald-500 hover:underline font-medium">
+                <a href="{{ route('admin.courses.index') }}" wire:navigate class="text-xs text-primary hover:underline font-medium">
                     {{ __('View all courses') }} →
                 </a>
             </div>
@@ -263,7 +263,7 @@
                     <div class="space-y-1.5">
                         @foreach ($topCourses as $course)
                             <div class="flex items-center gap-3 bg-secondary/30 rounded-lg px-3 py-2.5">
-                                <span class="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-500 text-xs font-bold shrink-0">{{ $course['rank'] }}</span>
+                                <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-bold shrink-0">{{ $course['rank'] }}</span>
                                 <div class="min-w-0 flex-1">
                                     <p class="text-xs sm:text-sm font-medium truncate">{{ $course['name'] }}</p>
                                     <p class="text-[10px] sm:text-xs text-muted-foreground">{{ $course['enrolled'] }} {{ __('enrolled') }} · {{ $course['batch'] }}</p>
@@ -288,7 +288,7 @@
                                 </span>
                             </div>
                         @endforeach
-                        <a href="{{ route('admin.batches.index') }}" wire:navigate class="block text-center text-xs text-emerald-500 hover:underline font-medium pt-1">
+                        <a href="{{ route('admin.batches.index') }}" wire:navigate class="block text-center text-xs text-primary hover:underline font-medium pt-1">
                             {{ __('Manage batches') }} →
                         </a>
                     </div>
@@ -304,7 +304,7 @@
             <div class="space-y-3">
                 @foreach ($activities as $activity)
                     <div class="flex items-start gap-3">
-                        <span class="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span class="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0"></span>
                         <div class="min-w-0">
                             <p class="text-xs sm:text-sm">
                                 <span class="font-medium">{{ $activity['user'] }}</span>
@@ -332,7 +332,7 @@
         <div class="rounded-xl border border-border bg-card p-4 sm:p-5">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold">{{ __('Staff sessions') }}</h3>
-                <a href="{{ route('admin.users.index') }}" wire:navigate class="text-xs text-emerald-500 hover:underline font-medium">{{ __('View all') }} →</a>
+                <a href="{{ route('admin.users.index') }}" wire:navigate class="text-xs text-primary hover:underline font-medium">{{ __('View all') }} →</a>
             </div>
             <div class="space-y-2">
                 @foreach ($recentLogins as $login)

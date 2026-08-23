@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +12,7 @@ use Livewire\Component;
 
 new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends Component {
     public array $form = [
+        'is_enabled' => true,
         'driver' => 'smtp',
         'smtp_host' => '',
         'smtp_port' => 587,
@@ -30,8 +32,9 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
         foreach ($this->form as $key => $default) {
             $fullKey = "email.{$key}";
             if (isset($settings[$fullKey])) {
-                // Secrets are not pre-filled in plain text
-                if ($key === 'smtp_password' && $settings[$fullKey]->type === Setting::TYPE_SECRET) {
+                if ($key === 'is_enabled') {
+                    $this->form[$key] = (bool) $settings[$fullKey]->typed();
+                } elseif ($key === 'smtp_password' && $settings[$fullKey]->type === Setting::TYPE_SECRET) {
                     $this->form[$key] = '';
                 } else {
                     $this->form[$key] = (string) ($settings[$fullKey]->rawValue() ?? $default);
@@ -43,6 +46,7 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
     public function save(): void
     {
         $this->validate([
+            'form.is_enabled' => ['boolean'],
             'form.driver' => ['required', 'string', 'in:smtp,log,sendmail,mailgun,ses'],
             'form.smtp_host' => ['nullable', 'string', 'max:255'],
             'form.smtp_port' => ['nullable', 'numeric', 'min:1', 'max:65535'],
@@ -62,6 +66,7 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                 foreach ($this->form as $key => $value) {
                     $fullKey = "email.{$key}";
                     $type = match ($key) {
+                        'is_enabled' => Setting::TYPE_BOOLEAN,
                         'smtp_port' => Setting::TYPE_NUMBER,
                         'smtp_password' => Setting::TYPE_SECRET,
                         'driver', 'smtp_encryption' => Setting::TYPE_SELECT,
@@ -80,7 +85,7 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
 
                     // Only update secret password if not left blank
                     if ($key !== 'smtp_password' || trim((string) $value) !== '') {
-                        $setting->value = $value;
+                        $setting->value = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
                     }
 
                     $setting->status = true;
@@ -90,6 +95,13 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                 }
 
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'setting_updated',
+                    description: 'Updated email provider and SMTP delivery settings.',
+                    newValues: collect($this->form)->except('smtp_password')->all(),
+                    userId: $userId
+                );
             });
 
             Toast::dispatch($this, 'success', __('Email provider settings saved successfully.'));
@@ -155,6 +167,13 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                     <h2 class="text-sm font-semibold">{{ __('Mail Transport & Driver') }}</h2>
                     <p class="text-[11px] text-muted-foreground">{{ __('Select your primary email delivery service.') }}</p>
                 </div>
+            <div class="p-3.5 rounded-lg border border-border bg-secondary/15">
+                <x-ui.switch
+                    wire:model="form.is_enabled"
+                    :label="__('Enable Email Dispatching')"
+                    :description="__('When disabled, outgoing system emails will be suppressed.')"
+                    :checked="(bool) $form['is_enabled']"
+                />
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\AuditLogService;
 use App\Support\Toast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -100,6 +101,13 @@ new #[Layout('layouts.app')] #[Title('SMS Gateway Settings')] class extends Comp
                 }
 
                 Setting::flushCache();
+
+                AuditLogService::log(
+                    event: 'setting_updated',
+                    description: 'Updated SMS gateway configuration (Enabled: '.($this->form['enabled'] ? 'Yes' : 'No').', Driver: '.$this->form['driver'].').',
+                    newValues: collect($this->form)->except('two_factor_api_key')->all(),
+                    userId: $userId
+                );
             });
 
             Toast::dispatch($this, 'success', __('SMS gateway settings saved successfully.'));

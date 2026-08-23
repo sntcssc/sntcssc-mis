@@ -104,8 +104,8 @@ new class extends Component {
             >
                 <span class="truncate">{{ $team->name }}</span>
                 @if ($team->isCurrent)
-                    <span class="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20">
-                        <x-icon name="check" class="h-2.5 w-2.5 text-emerald-500" stroke-width="3"/>
+                    <span class="flex h-4 w-4 items-center justify-center rounded-full bg-primary/15">
+                        <x-icon name="check" class="h-2.5 w-2.5 text-primary" stroke-width="3"/>
                     </span>
                 @endif
             </button>
@@ -116,7 +116,7 @@ new class extends Component {
             type="button"
             x-data
             x-on:click="$store.modals.open('create-team')"
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-emerald-500 hover:bg-secondary transition-colors cursor-pointer"
+            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-primary hover:bg-secondary transition-colors cursor-pointer"
             data-test="team-switcher-new-team"
         >
             <x-icon name="plus" class="h-4 w-4"/>
