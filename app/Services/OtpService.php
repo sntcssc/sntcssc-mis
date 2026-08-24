@@ -259,7 +259,15 @@ class OtpService
         try {
             $otp = OtpCode::query()
                 ->where('identifier', $normalized)
-                ->where('type', $type)
+                ->where(function ($q) use ($type) {
+                    if ($type === OtpCode::TYPE_VERIFY_EMAIL || $type === OtpCode::TYPE_REGISTRATION_EMAIL) {
+                        $q->whereIn('type', [OtpCode::TYPE_VERIFY_EMAIL, OtpCode::TYPE_REGISTRATION_EMAIL]);
+                    } elseif ($type === OtpCode::TYPE_VERIFY_PHONE || $type === OtpCode::TYPE_REGISTRATION_SMS) {
+                        $q->whereIn('type', [OtpCode::TYPE_VERIFY_PHONE, OtpCode::TYPE_REGISTRATION_SMS]);
+                    } else {
+                        $q->where('type', $type);
+                    }
+                })
                 ->whereNull('verified_at')
                 ->where('expires_at', '>', now())
                 ->latest('id')

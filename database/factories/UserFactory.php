@@ -26,10 +26,23 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $firstName = fake()->firstName();
+        $lastName = fake()->lastName();
+
         return [
-            'name' => fake()->name(),
+            'name' => "{$firstName} {$lastName}",
+            'first_name' => $firstName,
+            'last_name' => $lastName,
             'email' => fake()->unique()->safeEmail(),
             'phone' => '+91'.fake()->unique()->numerify('98########'),
+            'whatsapp_no' => '+91'.fake()->numerify('98########'),
+            'dob' => fake()->dateTimeBetween('-35 years', '-20 years')->format('Y-m-d'),
+            'gender' => fake()->randomElement(['male', 'female', 'other']),
+            'tenth_roll' => fake()->numerify('WB-10-######'),
+            'id_type' => fake()->randomElement(['aadhaar', 'pan', 'voter_id']),
+            'id_number' => fake()->numerify('####-####-####'),
+            'designation' => fake()->randomElement(['Assistant Professor', 'Admissions Officer', 'Accounts Officer', 'Staff Assistant']),
+            'status' => 'active',
             'email_verified_at' => now(),
             'phone_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),

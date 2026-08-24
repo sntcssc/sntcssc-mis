@@ -228,6 +228,13 @@
                     </div>
                 </div>
             </section>
+
+            {{-- Newsletter & WhatsApp Updates Section --}}
+            <section class="py-12 sm:py-16 bg-secondary/20 border-t border-border/60">
+                <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <livewire:public.newsletter-subscribe />
+                </div>
+            </section>
         </main>
 
         {{-- Modern Institutional Multi-Column Footer --}}

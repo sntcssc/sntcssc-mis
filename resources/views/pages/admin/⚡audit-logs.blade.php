@@ -239,9 +239,9 @@ new #[Layout('layouts.app')] #[Title('Audit Logs & Compliance')] class extends C
 
     {{-- Filter Bar --}}
     <div class="rounded-xl border border-border bg-card p-4 space-y-3 shadow-xs">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3 items-center">
             {{-- Search input --}}
-            <div class="relative lg:col-span-2">
+            <div class="relative xl:col-span-4 min-w-0">
                 <x-icon name="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none"/>
                 <input
                     type="text"
@@ -252,51 +252,55 @@ new #[Layout('layouts.app')] #[Title('Audit Logs & Compliance')] class extends C
             </div>
 
             {{-- Event Type Dropdown --}}
-            <select
-                wire:model.live="eventFilter"
-                class="h-9 rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-                <option value="">{{ __('All Event Types') }}</option>
-                <option value="login">{{ __('Login (Success)') }}</option>
-                <option value="logout">{{ __('Logout') }}</option>
-                <option value="failed_login">{{ __('Failed Login') }}</option>
-                <option value="password_reset">{{ __('Password Reset') }}</option>
-                <option value="setting_updated">{{ __('Setting Updated') }}</option>
-                <option value="theme_changed">{{ __('Theme Preset / Color Changed') }}</option>
-                <option value="translations_updated">{{ __('Translations Updated') }}</option>
-                <option value="language_created">{{ __('Language Created') }}</option>
-                <option value="language_updated">{{ __('Language Updated') }}</option>
-                <option value="language_deleted">{{ __('Language Deleted') }}</option>
-                <option value="maintenance_mode_toggled">{{ __('Maintenance Mode Toggled') }}</option>
-                <option value="created">{{ __('Model Created') }}</option>
-                <option value="updated">{{ __('Model Updated') }}</option>
-                <option value="deleted">{{ __('Model Deleted') }}</option>
-            </select>
+            <div class="xl:col-span-3 min-w-0">
+                <select
+                    wire:model.live="eventFilter"
+                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 truncate"
+                >
+                    <option value="">{{ __('All Event Types') }}</option>
+                    <option value="login">{{ __('Login (Success)') }}</option>
+                    <option value="logout">{{ __('Logout') }}</option>
+                    <option value="failed_login">{{ __('Failed Login') }}</option>
+                    <option value="password_reset">{{ __('Password Reset') }}</option>
+                    <option value="setting_updated">{{ __('Setting Updated') }}</option>
+                    <option value="theme_changed">{{ __('Theme Preset / Color Changed') }}</option>
+                    <option value="translations_updated">{{ __('Translations Updated') }}</option>
+                    <option value="language_created">{{ __('Language Created') }}</option>
+                    <option value="language_updated">{{ __('Language Updated') }}</option>
+                    <option value="language_deleted">{{ __('Language Deleted') }}</option>
+                    <option value="maintenance_mode_toggled">{{ __('Maintenance Mode Toggled') }}</option>
+                    <option value="created">{{ __('Model Created') }}</option>
+                    <option value="updated">{{ __('Model Updated') }}</option>
+                    <option value="deleted">{{ __('Model Deleted') }}</option>
+                </select>
+            </div>
 
             {{-- User Dropdown --}}
-            <select
-                wire:model.live="userFilter"
-                class="h-9 rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-                <option value="">{{ __('All Users / System') }}</option>
-                @foreach ($this->users as $u)
-                    <option value="{{ $u->id }}">{{ $u->name }} ({{ $u->email }})</option>
-                @endforeach
-            </select>
+            <div class="xl:col-span-2 min-w-0">
+                <select
+                    wire:model.live="userFilter"
+                    class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 truncate"
+                >
+                    <option value="">{{ __('All Users / System') }}</option>
+                    @foreach ($this->users as $u)
+                        <option value="{{ $u->id }}">{{ $u->name }}</option>
+                    @endforeach
+                </select>
+            </div>
 
             {{-- Date Range --}}
-            <div class="flex items-center gap-1.5">
+            <div class="xl:col-span-3 flex items-center gap-1.5 min-w-0">
                 <input
                     type="date"
                     wire:model.live="dateFrom"
-                    class="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring"
+                    class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring"
                     title="{{ __('From date') }}"
                 />
-                <span class="text-xs text-muted-foreground">-</span>
+                <span class="text-xs text-muted-foreground shrink-0">-</span>
                 <input
                     type="date"
                     wire:model.live="dateTo"
-                    class="h-9 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring"
+                    class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring"
                     title="{{ __('To date') }}"
                 />
             </div>

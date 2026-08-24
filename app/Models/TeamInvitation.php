@@ -7,6 +7,7 @@ use Database\Factories\TeamInvitationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -29,7 +30,15 @@ use Illuminate\Support\Str;
 class TeamInvitation extends Model
 {
     /** @use HasFactory<TeamInvitationFactory> */
-    use HasFactory;
+    use HasFactory, Prunable;
+
+    /**
+     * Get the prunable model query.
+     */
+    public function prunable()
+    {
+        return static::where('expires_at', '<=', now());
+    }
 
     /**
      * Bootstrap the model and its traits.

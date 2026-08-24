@@ -3,15 +3,18 @@
 use App\Models\EmailTemplate;
 use App\Models\SmsTemplate;
 use App\Models\User;
+use App\Services\RbacService;
 use Database\Seeders\MessageTemplateSeeder;
 use Livewire\Livewire;
 
 beforeEach(function () {
     (new MessageTemplateSeeder)->run();
+    RbacService::seedDefaults();
 });
 
 test('sms templates page can be rendered by authenticated user', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this->actingAs($user)->get(route('admin.sms-templates.index', ['current_team' => $user->personalTeam()->slug]));
 
@@ -20,6 +23,7 @@ test('sms templates page can be rendered by authenticated user', function () {
 
 test('email templates page can be rendered by authenticated user', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this->actingAs($user)->get(route('admin.email-templates.index', ['current_team' => $user->personalTeam()->slug]));
 

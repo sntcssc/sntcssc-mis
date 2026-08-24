@@ -13,6 +13,7 @@ use Livewire\Component;
 new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends Component {
     public array $form = [
         'is_enabled' => true,
+        'verification_mode' => 'otp',
         'driver' => 'smtp',
         'smtp_host' => '',
         'smtp_port' => 587,
@@ -47,6 +48,7 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
     {
         $this->validate([
             'form.is_enabled' => ['boolean'],
+            'form.verification_mode' => ['required', 'string', 'in:otp,link'],
             'form.driver' => ['required', 'string', 'in:smtp,log,sendmail,mailgun,ses'],
             'form.smtp_host' => ['nullable', 'string', 'max:255'],
             'form.smtp_port' => ['nullable', 'numeric', 'min:1', 'max:65535'],
@@ -69,7 +71,7 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                         'is_enabled' => Setting::TYPE_BOOLEAN,
                         'smtp_port' => Setting::TYPE_NUMBER,
                         'smtp_password' => Setting::TYPE_SECRET,
-                        'driver', 'smtp_encryption' => Setting::TYPE_SELECT,
+                        'driver', 'smtp_encryption', 'verification_mode' => Setting::TYPE_SELECT,
                         default => Setting::TYPE_STRING,
                     };
 
@@ -188,6 +190,57 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                         'ses' => 'Amazon Simple Email Service (SES)',
                     ]"
                 />
+            </div>
+        </div>
+
+        {{-- Section 2: Registration Email Verification Mode --}}
+        <div class="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4 shadow-xs">
+            <div class="flex items-center gap-2.5 pb-3 border-b border-border">
+                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <x-icon name="shield-check" class="h-4 w-4"/>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold">{{ __('Registration Email Verification Strategy') }}</h2>
+                    <p class="text-[11px] text-muted-foreground">{{ __('Choose whether users verify their email address via OTP code or magic link during sign-up.') }}</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="relative flex flex-col p-4 rounded-xl border cursor-pointer transition-all {{ $form['verification_mode'] === 'otp' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border bg-card hover:bg-secondary/20' }}">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="radio"
+                                wire:model.live="form.verification_mode"
+                                value="otp"
+                                class="text-primary focus:ring-primary h-4 w-4"
+                            />
+                            <span class="text-sm font-semibold text-foreground">{{ __('OTP Based Verification') }}</span>
+                        </div>
+                        <x-ui.badge color="emerald" class="text-[10px]">{{ __('Recommended') }}</x-ui.badge>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2 pl-6">
+                        {{ __('Dispatches a 6-digit one-time password (OTP) directly to the user email for fast, on-screen verification (identical to mobile number OTP).') }}
+                    </p>
+                </label>
+
+                <label class="relative flex flex-col p-4 rounded-xl border cursor-pointer transition-all {{ $form['verification_mode'] === 'link' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border bg-card hover:bg-secondary/20' }}">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="radio"
+                                wire:model.live="form.verification_mode"
+                                value="link"
+                                class="text-primary focus:ring-primary h-4 w-4"
+                            />
+                            <span class="text-sm font-semibold text-foreground">{{ __('Link Based Verification') }}</span>
+                        </div>
+                        <x-ui.badge color="secondary" class="text-[10px]">{{ __('Standard') }}</x-ui.badge>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2 pl-6">
+                        {{ __('Dispatches a signed magic verification link URL that the user must click in their mailbox to activate their account.') }}
+                    </p>
+                </label>
             </div>
         </div>
 

@@ -74,6 +74,16 @@ class MessageTemplateSeeder extends Seeder
                 'variables' => ['course', 'url', 'app_name'],
                 'status' => true,
             ],
+            [
+                'code' => 'subscriber_welcome_sms',
+                'name' => 'Subscriber Welcome & Alerts SMS',
+                'category' => SmsTemplate::CATEGORY_COMMUNICATION,
+                'sender_id' => 'SNTCSS',
+                'dlt_template_id' => '1007161234567890140',
+                'body' => 'Welcome to {app_name}! You are subscribed to instant updates. Unsubscribe anytime: {unsubscribe_url}',
+                'variables' => ['name', 'app_name', 'unsubscribe_url'],
+                'status' => true,
+            ],
         ];
 
         foreach ($smsTemplates as $template) {
@@ -182,6 +192,94 @@ class MessageTemplateSeeder extends Seeder
     <p style="color: #9ca3af; font-size: 12px; text-align: center;">&copy; {app_name}. All rights reserved.</p>
 </div>',
                 'variables' => ['name', 'notice_title', 'notice_content', 'date', 'app_name'],
+                'status' => true,
+            ],
+            [
+                'code' => 'backup_completed',
+                'name' => 'Database Backup Generated Notice',
+                'category' => EmailTemplate::CATEGORY_SYSTEM,
+                'subject' => '[{app_name}] Database Backup Generated ({size})',
+                'body' => '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+    <h2 style="color: #111827; margin-bottom: 6px;">System Backup Successful</h2>
+    <p style="color: #374151; font-size: 14px;">A new system backup archive <strong>{filename}</strong> has been generated.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;">
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">File Size:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{size}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Backup Type:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{type}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Tables Dumped:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{tables_count}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Total Records:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{records_count}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">ZIP Attached:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{attached}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Generated At:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{date}</td></tr>
+    </table>
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{download_url}" style="background: #0284c7; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">Open Backup Dashboard</a>
+    </div>
+    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">&copy; {app_name}. Automated System Notification.</p>
+</div>',
+                'variables' => ['app_name', 'filename', 'size', 'type', 'tables_count', 'records_count', 'attached', 'date', 'download_url'],
+                'status' => true,
+            ],
+            [
+                'code' => 'backup_failed',
+                'name' => 'Database Backup Failure Alert',
+                'category' => EmailTemplate::CATEGORY_SYSTEM,
+                'subject' => '[URGENT] [{app_name}] Database Backup Failed',
+                'body' => '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #fee2e2; border-radius: 12px; background: #ffffff;">
+    <h2 style="color: #b91c1c; margin-bottom: 6px;">Database Backup Failed</h2>
+    <p style="color: #374151; font-size: 14px;">An automated or manual database backup attempt encountered an unexpected error.</p>
+    <div style="background: #fef2f2; border: 1px solid #fca5a5; padding: 14px; border-radius: 8px; margin: 16px 0; color: #991b1b; font-family: monospace; font-size: 12px;">
+        {error_message}
+    </div>
+    <p style="color: #6b7280; font-size: 13px;">Trigger: <strong>{trigger_type}</strong> | Timestamp: <strong>{date}</strong></p>
+    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">&copy; {app_name}. Automated System Alert.</p>
+</div>',
+                'variables' => ['app_name', 'error_message', 'trigger_type', 'date'],
+                'status' => true,
+            ],
+            [
+                'code' => 'backup_scheduled_report',
+                'name' => 'Database Backup Health & Status Report',
+                'category' => EmailTemplate::CATEGORY_SYSTEM,
+                'subject' => '[{app_name}] Periodic Backup Health Report',
+                'body' => '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+    <h2 style="color: #111827; margin-bottom: 6px;">Database Backup Health Report</h2>
+    <p style="color: #374151; font-size: 14px;">Here is the current operational summary of your database backups and disk volume.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;">
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Total Stored Backups:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{total_backups}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Total Storage Used:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{total_storage}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Latest Backup Archive:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{latest_backup}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Latest Backup Date:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{latest_date}</td></tr>
+        <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 8px 0; color: #6b7280;">Automated Schedule:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{schedule_status}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Report Generated:</td><td style="padding: 8px 0; font-weight: 600; color: #111827;">{report_date}</td></tr>
+    </table>
+    <div style="text-align: center; margin: 24px 0;">
+        <a href="{dashboard_url}" style="background: #0284c7; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">Manage Backups</a>
+    </div>
+    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">&copy; {app_name}. Automated System Report.</p>
+</div>',
+                'variables' => ['app_name', 'total_backups', 'total_storage', 'latest_backup', 'latest_date', 'latest_status', 'schedule_status', 'report_date', 'dashboard_url'],
+                'status' => true,
+            ],
+            [
+                'code' => 'subscriber_welcome_email',
+                'name' => 'Subscriber Welcome & Confirmation Email',
+                'category' => EmailTemplate::CATEGORY_COMMUNICATION,
+                'subject' => 'Welcome to {app_name} Updates & Newsletter',
+                'body' => '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+    <h2 style="color: #111827; margin-bottom: 6px;">Welcome to {app_name}!</h2>
+    <p style="color: #374151; font-size: 14px;">Hello {name},</p>
+    <p style="color: #374151; font-size: 14px;">Thank you for subscribing to the {app_name} newsletter and updates list. You will receive the latest announcements regarding admissions, mock test schedules, lecture updates, and civil services examination insights.</p>
+    <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px; margin: 18px 0; font-size: 13px; color: #166534;">
+        <strong>Subscription Active:</strong> Your email <code>{email}</code> is confirmed.
+    </div>
+    <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center;">
+        &copy; {app_name}. If you wish to stop receiving these updates, you can <a href="{unsubscribe_url}" style="color: #6b7280; text-decoration: underline;">unsubscribe here</a>.
+    </p>
+</div>',
+                'variables' => ['name', 'email', 'phone', 'app_name', 'unsubscribe_url'],
                 'status' => true,
             ],
         ];

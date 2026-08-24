@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Services\RbacService;
 
 test('guests are redirected from admin pages to login', function (string $path) {
     $user = User::factory()->create();
@@ -15,7 +16,9 @@ test('guests are redirected from admin pages to login', function (string $path) 
 ]);
 
 test('authenticated users can visit every admin page', function (string $path) {
+    RbacService::seedDefaults();
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this
         ->actingAs($user)

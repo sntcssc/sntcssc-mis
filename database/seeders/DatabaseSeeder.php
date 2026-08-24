@@ -28,6 +28,8 @@ class DatabaseSeeder extends Seeder
             MessageTemplateSeeder::class,
             PageSeeder::class,
             ContactMasterSeeder::class,
+            RbacSeeder::class,
+            SuperAdminSeeder::class,
         ]);
     }
 }

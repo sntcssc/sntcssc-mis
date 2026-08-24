@@ -44,12 +44,15 @@ class SmsTemplate extends Model
 
     public const CATEGORY_PROMOTIONAL = 'promotional';
 
+    public const CATEGORY_SUPPORT = 'support';
+
     public const CATEGORIES = [
         self::CATEGORY_OTP => 'OTP & Security',
         self::CATEGORY_NOTIFICATION => 'Notifications',
         self::CATEGORY_NOTICE => 'Notice Board',
         self::CATEGORY_COMMUNICATION => 'Communications',
         self::CATEGORY_PROMOTIONAL => 'Promotional',
+        self::CATEGORY_SUPPORT => 'Support & Helpdesk',
     ];
 
     protected $fillable = [

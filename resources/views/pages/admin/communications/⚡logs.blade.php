@@ -116,29 +116,63 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
         }
     }
 
+    public ?int $deletingLogId = null;
+
+    public function confirmDelete(int $id): void
+    {
+        $this->deletingLogId = $id;
+        $this->dispatch('modal-open', name: 'delete-log-modal');
+    }
+
     public function deleteLog(int $id): void
     {
+        $this->deletingLogId = $id;
+        $this->executeDelete();
+    }
+
+    public function executeDelete(): void
+    {
+        if (! $this->deletingLogId) {
+            return;
+        }
+
         try {
-            $log = CommunicationLog::findOrFail($id);
+            $log = CommunicationLog::findOrFail($this->deletingLogId);
             $log->delete();
 
             AuditLogService::log(
                 event: 'communication_log_deleted',
-                description: "Soft deleted communication log #{$id} ({$log->channel} to {$log->recipient})",
+                description: "Soft deleted communication log #{$this->deletingLogId} ({$log->channel} to {$log->recipient})",
                 userId: auth()->id()
             );
 
+            $this->deletingLogId = null;
+            $this->dispatch('modal-close', name: 'delete-log-modal');
             Toast::dispatch($this, 'success', __('Message log moved to trash.'));
         } catch (\Throwable $e) {
             Toast::dispatch($this, 'error', __('Failed to delete message log.'));
         }
     }
 
-    public function bulkDeleteSelected(): void
+    public function confirmBulkDelete(): void
     {
         if (empty($this->selectedLogs)) {
             Toast::dispatch($this, 'warning', __('Please select items to delete.'));
 
+            return;
+        }
+
+        $this->dispatch('modal-open', name: 'bulk-delete-log-modal');
+    }
+
+    public function bulkDeleteSelected(): void
+    {
+        $this->executeBulkDelete();
+    }
+
+    public function executeBulkDelete(): void
+    {
+        if (empty($this->selectedLogs)) {
             return;
         }
 
@@ -153,6 +187,7 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
                 userId: auth()->id()
             );
 
+            $this->dispatch('modal-close', name: 'bulk-delete-log-modal');
             Toast::dispatch($this, 'success', __(':count logs moved to trash.', ['count' => $count]));
         } catch (\Throwable $e) {
             Toast::dispatch($this, 'error', __('Bulk deletion failed.'));
@@ -387,8 +422,7 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
 
                 <button
                     type="button"
-                    wire:click="bulkDeleteSelected"
-                    wire:confirm="{{ __('Are you sure you want to move selected logs to trash?') }}"
+                    wire:click="confirmBulkDelete"
                     class="h-9 px-3 rounded-lg bg-rose-600/15 text-rose-600 text-xs font-semibold flex items-center gap-1.5 hover:bg-rose-600/25 transition-colors cursor-pointer border border-rose-500/20"
                 >
                     <x-icon name="trash-2" class="h-3.5 w-3.5"/>
@@ -568,8 +602,7 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
                                         {{-- Soft Delete --}}
                                         <button
                                             type="button"
-                                            wire:click="deleteLog({{ $log->id }})"
-                                            wire:confirm="{{ __('Are you sure you want to delete this log entry?') }}"
+                                            wire:click="confirmDelete({{ $log->id }})"
                                             class="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors cursor-pointer"
                                             title="{{ __('Delete') }}"
                                         >
@@ -601,106 +634,110 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
 
     {{-- Details Inspection Modal --}}
     @if ($detailsModalOpen && $viewingLog)
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div class="w-full max-w-3xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto" wire:keydown.escape="$set('detailsModalOpen', false)">
+            <div class="fixed inset-0" wire:click="$set('detailsModalOpen', false)"></div>
+            <div class="relative w-full max-w-3xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 max-h-[88vh] flex flex-col my-auto z-10">
                 {{-- Modal Header --}}
-                <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-                    <div class="flex items-center gap-2.5">
-                        <div class="flex h-9 w-9 items-center justify-center rounded-lg {{ $viewingLog->isEmail() ? 'bg-violet-500/15 text-violet-600' : 'bg-cyan-500/15 text-cyan-600' }}">
+                <div class="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-border bg-secondary/30 shrink-0">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-xl {{ $viewingLog->isEmail() ? 'bg-violet-500/15 text-violet-600' : 'bg-cyan-500/15 text-cyan-600' }}">
                             <x-icon :name="$viewingLog->isEmail() ? 'mail' : 'smartphone'" class="h-5 w-5"/>
                         </div>
                         <div>
-                            <h2 class="text-base font-bold text-foreground">
-                                {{ __('Delivery Log Details') }} #{{ $viewingLog->id }}
+                            <h2 class="text-sm sm:text-base font-bold text-foreground flex items-center gap-2">
+                                <span>{{ __('Delivery Log Details') }}</span>
+                                <span class="font-mono text-xs px-2 py-0.5 rounded-md bg-secondary text-muted-foreground">#{{ $viewingLog->id }}</span>
                             </h2>
-                            <p class="text-xs text-muted-foreground">
-                                {{ strtoupper($viewingLog->channel) }} &bull; {{ $viewingLog->created_at->format('d M Y, h:i:s A') }}
+                            <p class="text-[11px] text-muted-foreground mt-0.5">
+                                <span class="font-bold uppercase tracking-wider">{{ $viewingLog->channel }}</span> &bull; {{ $viewingLog->created_at->format('d M Y, h:i:s A') }} ({{ $viewingLog->created_at->diffForHumans() }})
                             </p>
                         </div>
                     </div>
 
-                    <button type="button" wire:click="$set('detailsModalOpen', false)" class="text-muted-foreground hover:text-foreground cursor-pointer">
-                        <x-icon name="x" class="h-5 w-5"/>
+                    <button type="button" wire:click="$set('detailsModalOpen', false)" class="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer" aria-label="{{ __('Close') }}">
+                        <x-icon name="x" class="h-4 w-4"/>
                     </button>
                 </div>
 
                 {{-- Modal Body --}}
-                <div class="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                <div class="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 text-xs">
                     {{-- Status Banner --}}
                     @if ($viewingLog->isDelivered())
-                        <div class="flex items-center justify-between p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400">
-                            <div class="flex items-center gap-2">
-                                <x-icon name="check-circle-2" class="h-5 w-5"/>
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400">
+                            <div class="flex items-center gap-2.5">
+                                <x-icon name="check-circle-2" class="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"/>
                                 <div>
-                                    <span class="font-bold text-sm">{{ __('Successfully Dispatched') }}</span>
-                                    <p class="text-[11px] opacity-90">{{ __('Message was successfully delivered by the gateway.') }}</p>
+                                    <span class="font-bold text-xs sm:text-sm block">{{ __('Successfully Dispatched & Delivered') }}</span>
+                                    <p class="text-[11px] opacity-90">{{ __('Message was successfully delivered via the configured gateway.') }}</p>
                                 </div>
                             </div>
-                            <span class="text-[11px] font-mono">{{ $viewingLog->delivered_at?->format('h:i A') }}</span>
+                            @if ($viewingLog->delivered_at)
+                                <span class="text-[11px] font-mono px-2 py-1 rounded bg-emerald-500/10 shrink-0">{{ $viewingLog->delivered_at->format('h:i A') }}</span>
+                            @endif
                         </div>
                     @else
-                        <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 space-y-1">
+                        <div class="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive space-y-1.5">
                             <div class="flex items-center gap-2">
-                                <x-icon name="alert-triangle" class="h-5 w-5 shrink-0"/>
-                                <span class="font-bold text-sm">{{ __('Delivery Failure Reason') }}</span>
+                                <x-icon name="alert-triangle" class="h-5 w-5 shrink-0 text-destructive"/>
+                                <span class="font-bold text-xs sm:text-sm">{{ __('Delivery Failure Reason') }}</span>
                             </div>
-                            <p class="font-mono text-xs bg-rose-500/5 p-2 rounded border border-rose-500/20 mt-1">
-                                {{ $viewingLog->error_message ?: __('Unknown error occurred during dispatch.') }}
+                            <p class="font-mono text-[11px] bg-background/80 p-2.5 rounded-lg border border-destructive/20 break-words leading-relaxed">
+                                {{ $viewingLog->error_message ?: __('Unknown gateway failure occurred during message transmission.') }}
                             </p>
                         </div>
                     @endif
 
                     {{-- Recipient & Sender Metadata Grid --}}
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-3.5 rounded-xl bg-secondary/30 border border-border">
-                        <div>
-                            <span class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{{ __('Recipient Name') }}</span>
-                            <div class="font-bold text-foreground mt-0.5">{{ $viewingLog->recipient_name ?: ($viewingLog->user?->name ?: __('Guest')) }}</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-secondary/30 border border-border">
+                        <div class="space-y-0.5">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ __('Recipient Name') }}</span>
+                            <div class="font-semibold text-foreground text-xs">{{ $viewingLog->recipient_name ?: ($viewingLog->user?->name ?: __('Guest Contact')) }}</div>
                         </div>
-                        <div>
-                            <span class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{{ __('Destination Address / Mobile') }}</span>
-                            <div class="font-mono text-foreground mt-0.5">{{ $viewingLog->recipient }}</div>
+                        <div class="space-y-0.5">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ __('Destination Address / Phone') }}</span>
+                            <div class="font-mono text-foreground text-xs break-all">{{ $viewingLog->recipient }}</div>
                         </div>
-                        <div>
-                            <span class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{{ __('Template Code') }}</span>
-                            <div class="font-mono text-foreground mt-0.5">{{ $viewingLog->template_code ?: __('N/A (Custom)') }}</div>
+                        <div class="space-y-0.5">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ __('Template Code') }}</span>
+                            <div class="font-mono text-primary font-bold text-xs">{{ $viewingLog->template_code ?: __('Custom Ad-hoc Message') }}</div>
                         </div>
-                        <div>
-                            <span class="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">{{ __('Dispatched By') }}</span>
-                            <div class="text-foreground mt-0.5">{{ $viewingLog->sender?->name ?? __('System Automation') }}</div>
+                        <div class="space-y-0.5">
+                            <span class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{{ __('Dispatched By') }}</span>
+                            <div class="text-foreground text-xs">{{ $viewingLog->sender?->name ?? __('System Background Service') }}</div>
                         </div>
                     </div>
 
                     {{-- Rendered Content Preview --}}
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{{ __('Rendered Content (Personalised)') }}</span>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{{ __('Rendered Message Payload') }}</span>
                             @if ($viewingLog->subject)
-                                <span class="text-[11px] font-medium text-foreground">
-                                    <strong>{{ __('Subject:') }}</strong> {{ $viewingLog->subject }}
+                                <span class="text-[11px] text-foreground truncate max-w-[280px]">
+                                    <strong class="text-muted-foreground">{{ __('Subject:') }}</strong> {{ $viewingLog->subject }}
                                 </span>
                             @endif
                         </div>
 
                         @if ($viewingLog->isEmail())
-                            <div class="rounded-xl border border-border bg-white dark:bg-slate-900 p-4 text-slate-900 dark:text-slate-100 overflow-x-auto shadow-inner max-h-64">
+                            <div class="rounded-xl border border-border bg-white dark:bg-zinc-950 p-4 text-zinc-900 dark:text-zinc-100 overflow-x-auto shadow-inner max-h-72 leading-relaxed text-xs break-words">
                                 {!! $viewingLog->content !!}
                             </div>
                         @else
-                            <div class="max-w-md rounded-2xl rounded-tl-none bg-secondary/80 border border-border p-4 text-foreground shadow-xs font-mono text-xs leading-relaxed">
+                            <div class="rounded-xl bg-secondary/70 border border-border p-4 text-foreground shadow-xs font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
                                 {{ $viewingLog->content }}
                             </div>
                         @endif
                     </div>
 
-                    {{-- Variables & Technical Info --}}
+                    {{-- Variables Injected --}}
                     @if (! empty($viewingLog->variables))
-                        <div>
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">{{ __('Variables Injected') }}</span>
-                            <div class="flex flex-wrap gap-1.5">
+                        <div class="space-y-1.5">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{{ __('Interpolated Variable Data') }}</span>
+                            <div class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 rounded-lg bg-secondary/20 border border-border">
                                 @foreach ($viewingLog->variables as $vKey => $vVal)
-                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-secondary text-[11px] font-mono border border-border">
-                                        <strong class="text-primary">{{ '{'.$vKey.'}' }}:</strong>
-                                        <span class="text-foreground">{{ is_scalar($vVal) ? $vVal : json_encode($vVal) }}</span>
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-card text-[10px] font-mono border border-border">
+                                        <strong class="text-primary">{!! e('{'.$vKey.'}') !!}:</strong>
+                                        <span class="text-foreground truncate max-w-[200px]">{{ is_scalar($vVal) ? $vVal : json_encode($vVal) }}</span>
                                     </span>
                                 @endforeach
                             </div>
@@ -709,29 +746,81 @@ new #[Layout('layouts.app')] #[Title('Communications Delivery Logs')] class exte
                 </div>
 
                 {{-- Modal Footer --}}
-                <div class="flex items-center justify-between px-6 py-4 border-t border-border bg-secondary/20 shrink-0">
-                    <div class="text-[11px] text-muted-foreground">
-                        {{ __('Resend Attempts: :count', ['count' => $viewingLog->resend_count]) }}
+                <div class="flex items-center justify-between px-5 sm:px-6 py-3.5 border-t border-border bg-secondary/30 shrink-0">
+                    <div class="text-[11px] text-muted-foreground font-medium">
+                        {{ __('Resend Count: :count', ['count' => $viewingLog->resend_count]) }}
                     </div>
 
-                    <div class="flex items-center gap-2.5">
-                        <x-ui.button type="button" variant="outline" wire:click="$set('detailsModalOpen', false)">
+                    <div class="flex items-center gap-2">
+                        <x-ui.button type="button" variant="outline" size="sm" wire:click="$set('detailsModalOpen', false)">
                             {{ __('Close') }}
                         </x-ui.button>
 
                         <x-ui.button
                             type="button"
+                            variant="default"
+                            size="sm"
                             wire:click="resendLog({{ $viewingLog->id }})"
                             wire:loading.attr="disabled"
                             wire:target="resendLog({{ $viewingLog->id }})"
                         >
-                            <x-icon name="rotate-ccw" class="h-4 w-4 mr-1.5" wire:loading.remove wire:target="resendLog({{ $viewingLog->id }})"/>
-                            <x-icon name="refresh-cw" class="h-4 w-4 mr-1.5 animate-spin" wire:loading wire:target="resendLog({{ $viewingLog->id }})"/>
-                            {{ __('Resend Message') }}
+                            <x-icon name="rotate-ccw" class="h-3.5 w-3.5 mr-1.5" wire:loading.remove wire:target="resendLog({{ $viewingLog->id }})"/>
+                            <x-icon name="refresh-cw" class="h-3.5 w-3.5 mr-1.5 animate-spin" wire:loading wire:target="resendLog({{ $viewingLog->id }})"/>
+                            {{ __('Resend Now') }}
                         </x-ui.button>
                     </div>
                 </div>
             </div>
         </div>
     @endif
+
+    {{-- Single Delete Confirmation Modal --}}
+    <x-ui.modal name="delete-log-modal" max-width="max-w-md" :title="__('Delete Message Log')" :description="__('Move this communication delivery log record to trash.')">
+        <div class="space-y-4 pt-1">
+            <div class="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-2">
+                <div class="font-bold flex items-center gap-2">
+                    <x-icon name="alert-triangle" class="h-4 w-4 shrink-0"/>
+                    <span>{{ __('Confirm Log Deletion') }}</span>
+                </div>
+                <p class="text-[11px] opacity-90 leading-relaxed">
+                    {{ __('Are you sure you want to move log #:id to trash? Trashed logs can be reviewed or restored from the Trash view.', ['id' => $deletingLogId]) }}
+                </p>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                <x-ui.button variant="outline" size="sm" type="button" x-data x-on:click="$store.modals.close('delete-log-modal')">
+                    {{ __('Cancel') }}
+                </x-ui.button>
+                <x-ui.button variant="destructive" size="sm" type="button" wire:click="executeDelete">
+                    <x-icon name="trash-2" class="h-3.5 w-3.5 mr-1.5"/>
+                    {{ __('Delete Log') }}
+                </x-ui.button>
+            </div>
+        </div>
+    </x-ui.modal>
+
+    {{-- Bulk Delete Confirmation Modal --}}
+    <x-ui.modal name="bulk-delete-log-modal" max-width="max-w-md" :title="__('Bulk Delete Message Logs')" :description="__('Move selected communication logs to trash.')">
+        <div class="space-y-4 pt-1">
+            <div class="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-2">
+                <div class="font-bold flex items-center gap-2">
+                    <x-icon name="alert-triangle" class="h-4 w-4 shrink-0"/>
+                    <span>{{ __('Confirm Bulk Deletion') }}</span>
+                </div>
+                <p class="text-[11px] opacity-90 leading-relaxed">
+                    {{ __('Are you sure you want to move :count selected log entries to trash?', ['count' => count($selectedLogs)]) }}
+                </p>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                <x-ui.button variant="outline" size="sm" type="button" x-data x-on:click="$store.modals.close('bulk-delete-log-modal')">
+                    {{ __('Cancel') }}
+                </x-ui.button>
+                <x-ui.button variant="destructive" size="sm" type="button" wire:click="executeBulkDelete">
+                    <x-icon name="trash-2" class="h-3.5 w-3.5 mr-1.5"/>
+                    {{ __('Delete Selected Logs') }}
+                </x-ui.button>
+            </div>
+        </div>
+    </x-ui.modal>
 </div>

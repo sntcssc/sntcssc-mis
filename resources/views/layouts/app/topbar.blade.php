@@ -123,16 +123,16 @@
         <x-ui.dropdown width="w-64" offset="mt-1">
             <x-slot:trigger>
                 <button type="button" class="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-secondary transition-colors cursor-pointer" data-test="sidebar-menu-button">
-                    <x-ui.avatar :name="$user->name" :initials="$user->initials()" size="size-7 text-xs"/>
+                    <x-ui.avatar :name="$user->name" :initials="$user->initials()" :src="$user->avatarUrl()" size="size-7 text-xs"/>
                     <span class="hidden md:flex flex-col items-start">
-                        <span class="text-sm font-medium leading-tight">{{ $user->name }}</span>
-                        <span class="text-[11px] text-muted-foreground leading-tight">{{ __('Administrator') }}</span>
+                        <span class="text-sm font-medium leading-tight truncate max-w-[140px]">{{ $user->name }}</span>
+                        <span class="text-[11px] text-muted-foreground leading-tight truncate max-w-[140px]">{{ $user->roles->first()?->name ?? __('User') }}</span>
                     </span>
                 </button>
             </x-slot:trigger>
 
             <div class="flex items-center gap-3 px-2 py-2">
-                <x-ui.avatar :name="$user->name" :initials="$user->initials()" size="size-10 text-sm"/>
+                <x-ui.avatar :name="$user->name" :initials="$user->initials()" :src="$user->avatarUrl()" size="size-10 text-sm"/>
                 <div class="min-w-0">
                     <p class="text-sm font-medium truncate">{{ $user->name }}</p>
                     <p class="text-xs text-muted-foreground truncate">{{ $user->email }}</p>

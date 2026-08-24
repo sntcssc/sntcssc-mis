@@ -17,8 +17,17 @@ trait ProfileValidationRules
     {
         return [
             'name' => $this->nameRules(),
+            'first_name' => ['nullable', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'email' => $this->emailRules($userId),
             'phone' => $this->phoneRules($userId),
+            'whatsapp_no' => ['nullable', 'string', 'max:25'],
+            'dob' => ['nullable', 'date'],
+            'gender' => ['nullable', 'string', 'in:male,female,other'],
+            'tenth_roll' => ['nullable', 'string', 'max:50'],
+            'id_type' => ['nullable', 'string', 'in:aadhaar,pan,voter_id,passport,driving_license'],
+            'id_number' => ['nullable', 'string', 'max:100'],
+            'designation' => ['nullable', 'string', 'max:150'],
         ];
     }
 

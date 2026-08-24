@@ -49,6 +49,11 @@
             'icon' => 'cpu',
             'route' => 'admin.settings.system',
         ],
+        'backup' => [
+            'label' => __('Database & Backups'),
+            'icon' => 'database',
+            'route' => 'admin.settings.backup',
+        ],
     ];
 @endphp
 

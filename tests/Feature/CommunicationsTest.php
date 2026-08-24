@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\CommunicationService;
 use App\Services\EmailService;
 use App\Services\OtpService;
+use App\Services\RbacService;
 use App\Services\SmsService;
 use App\Support\LucideIcons;
 use Database\Seeders\MessageTemplateSeeder;
@@ -18,6 +19,7 @@ use Livewire\Livewire;
 beforeEach(function () {
     (new SettingsSeeder)->run();
     (new MessageTemplateSeeder)->run();
+    RbacService::seedDefaults();
 
     Setting::set('sms.enabled', true);
     Setting::set('sms.driver', 'log');
@@ -27,6 +29,7 @@ beforeEach(function () {
 
 test('communications delivery logs page renders for authenticated user', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this->actingAs($user)->get(route('admin.communications.logs', ['current_team' => $user->personalTeam()->slug]));
 
@@ -35,6 +38,7 @@ test('communications delivery logs page renders for authenticated user', functio
 
 test('compose and bulk messaging page renders for authenticated user', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this->actingAs($user)->get(route('admin.communications.compose', ['current_team' => $user->personalTeam()->slug]));
 

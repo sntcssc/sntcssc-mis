@@ -36,10 +36,14 @@
 
     {{-- Dropzone / File Input --}}
     <div
-        x-data="{ isDragging: false }"
+        x-data="{ isDragging: false, isUploading: false, progress: 0 }"
         x-on:dragover.prevent="isDragging = true"
         x-on:dragleave.prevent="isDragging = false"
         x-on:drop="isDragging = false"
+        x-on:livewire-upload-start="isUploading = true; progress = 0"
+        x-on:livewire-upload-finish="isUploading = false"
+        x-on:livewire-upload-error="isUploading = false"
+        x-on:livewire-upload-progress="progress = $event.detail.progress"
         class="relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed transition-all p-4 text-center"
         :class="isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50 bg-card/50'"
     >
@@ -70,12 +74,26 @@
             </p>
         </div>
 
-        {{-- Uploading spinner indicator --}}
+        {{-- Uploading spinner & progress bar indicator --}}
+        <div
+            x-show="isUploading"
+            x-cloak
+            class="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-lg bg-background/95 backdrop-blur-sm p-4 text-center border border-primary/40 shadow-lg"
+        >
+            <div class="flex items-center gap-2 text-xs font-semibold text-primary mb-2">
+                <x-icon name="refresh-cw" class="h-4 w-4 animate-spin text-primary shrink-0"/>
+                <span>{{ __('Uploading file…') }} <span class="font-mono" x-text="`${progress}%`"></span></span>
+            </div>
+            <div class="w-full max-w-[180px] bg-secondary rounded-full h-1.5 overflow-hidden">
+                <div class="bg-primary h-1.5 rounded-full transition-all duration-150" :style="`width: ${progress}%`"></div>
+            </div>
+        </div>
+
         @if ($attributes->wire('model')->value())
-            <div wire:loading wire:target="{{ $attributes->wire('model')->value() }}" class="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-background/80 backdrop-blur-xs">
+            <div wire:loading wire:target="{{ $attributes->wire('model')->value() }}" class="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-background/85 backdrop-blur-xs">
                 <div class="flex items-center gap-2 text-xs font-medium text-primary">
                     <x-icon name="refresh-cw" class="h-4 w-4 animate-spin"/>
-                    <span>{{ __('Uploading…') }}</span>
+                    <span>{{ __('Processing…') }}</span>
                 </div>
             </div>
         @endif

@@ -20,6 +20,24 @@ class EmailService
     }
 
     /**
+     * Get the configured email verification mode ('otp' or 'link').
+     */
+    public static function getVerificationMode(): string
+    {
+        $mode = (string) Setting::get('email.verification_mode', 'otp');
+
+        return in_array($mode, ['otp', 'link'], true) ? $mode : 'otp';
+    }
+
+    /**
+     * Determine whether OTP based email verification is active.
+     */
+    public static function isOtpVerification(): bool
+    {
+        return self::getVerificationMode() === 'otp';
+    }
+
+    /**
      * Send email directly and return detailed status.
      *
      * @param  array{cc?: string|array<string>, bcc?: string|array<string>, from_address?: string, from_name?: string}  $options

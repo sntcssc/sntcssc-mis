@@ -7,6 +7,7 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\EmailService;
 use App\Services\OtpService;
 use App\Services\SmsService;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +52,19 @@ class CreateNewUser implements CreatesNewUsers
 
             $this->createTeam->handle($user, $user->name."'s Team", isPersonal: true);
 
-            // Trigger registration verification OTPs if enabled
+            // Trigger registration verification OTPs / notifications based on settings
+            if (EmailService::isEnabled()) {
+                if (EmailService::isOtpVerification()) {
+                    $this->otpService->generateAndSend(
+                        identifier: $user->email,
+                        type: OtpCode::TYPE_REGISTRATION_EMAIL,
+                        user: $user
+                    );
+                } else {
+                    $user->sendEmailVerificationNotification();
+                }
+            }
+
             if ($phone && SmsService::isEnabled()) {
                 $this->otpService->generateAndSend(
                     identifier: $phone,

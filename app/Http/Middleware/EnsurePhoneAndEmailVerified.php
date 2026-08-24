@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\EmailService;
 use App\Services\SmsService;
 use Closure;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -23,17 +24,14 @@ class EnsurePhoneAndEmailVerified
             return $next($request);
         }
 
-        // 1. Check Email verification if required
-        if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
-            return $request->expectsJson()
-                ? abort(403, 'Your email address is not verified.')
-                : redirect()->route($redirectToRoute ?: 'verification.notice');
-        }
+        // 1. Check Email verification if unverified
+        if (($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) || is_null($user->email_verified_at)) {
+            if ($request->expectsJson()) {
+                abort(403, 'Your email address is not verified.');
+            }
 
-        // Also check if email is unverified
-        if (is_null($user->email_verified_at)) {
-            return $request->expectsJson()
-                ? abort(403, 'Your email address is not verified.')
+            return EmailService::isOtpVerification()
+                ? redirect()->route('verify-otp', ['type' => 'email'])
                 : redirect()->route($redirectToRoute ?: 'verification.notice');
         }
 

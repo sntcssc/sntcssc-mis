@@ -18,12 +18,21 @@
         @endif
 
         <div class="flex flex-col items-center justify-between gap-3">
-            <form method="POST" action="{{ route('verification.send') }}" class="w-full">
-                @csrf
-                <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold">
-                    {{ __('Resend verification email') }}
-                </x-ui.button>
-            </form>
+            @if (\App\Services\EmailService::isOtpVerification())
+                <a href="{{ route('verify-otp', ['type' => 'email']) }}" class="w-full">
+                    <x-ui.button type="button" class="w-full h-[46px] rounded-lg text-sm font-semibold">
+                        <x-icon name="key-round" class="h-4 w-4 mr-2"/>
+                        {{ __('Enter 6-Digit OTP Code') }}
+                    </x-ui.button>
+                </a>
+            @else
+                <form method="POST" action="{{ route('verification.send') }}" class="w-full">
+                    @csrf
+                    <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold">
+                        {{ __('Resend verification email') }}
+                    </x-ui.button>
+                </form>
+            @endif
 
             <form method="POST" action="{{ route('logout') }}" class="w-full">
                 @csrf

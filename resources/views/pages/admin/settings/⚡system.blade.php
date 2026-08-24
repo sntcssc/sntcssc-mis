@@ -18,6 +18,7 @@ new #[Layout('layouts.app')] #[Title('System & Maintenance Settings')] class ext
         'maintenance_token' => '',
         'maintenance_message' => 'The application is currently undergoing scheduled maintenance. Please check back shortly.',
         'debug_mode' => false,
+        'allow_user_impersonation' => true,
         'app_name' => 'SNT CSSC MIS',
         'app_version' => '1.0.0',
         'developed_by' => 'SNT CSSC IT Team',
@@ -82,6 +83,7 @@ new #[Layout('layouts.app')] #[Title('System & Maintenance Settings')] class ext
             'form.maintenance_token' => ['nullable', 'string', 'max:100'],
             'form.maintenance_message' => ['nullable', 'string', 'max:500'],
             'form.debug_mode' => ['boolean'],
+            'form.allow_user_impersonation' => ['boolean'],
             'form.app_name' => ['required', 'string', 'max:255'],
             'form.app_version' => ['required', 'string', 'max:50'],
             'form.developed_by' => ['nullable', 'string', 'max:255'],
@@ -101,7 +103,7 @@ new #[Layout('layouts.app')] #[Title('System & Maintenance Settings')] class ext
                     $fullKey = "system.{$key}";
 
                     $type = match ($key) {
-                        'maintenance_mode', 'debug_mode' => Setting::TYPE_BOOLEAN,
+                        'maintenance_mode', 'debug_mode', 'allow_user_impersonation' => Setting::TYPE_BOOLEAN,
                         'max_upload_size', 'session_lifetime' => Setting::TYPE_NUMBER,
                         'cache_driver' => Setting::TYPE_SELECT,
                         'maintenance_message' => Setting::TYPE_TEXT,
@@ -224,6 +226,15 @@ new #[Layout('layouts.app')] #[Title('System & Maintenance Settings')] class ext
                         :label="__('Enable Diagnostic Mode (Debug)')"
                         :description="__('Detailed stack traces in dev/staging environments.')"
                         :checked="(bool) $form['debug_mode']"
+                    />
+                </div>
+
+                <div class="p-4 rounded-lg border border-border bg-secondary/10 space-y-2 sm:col-span-2">
+                    <x-ui.switch
+                        wire:model="form.allow_user_impersonation"
+                        :label="__('Allow Admin Impersonation (Anonymous Login as User)')"
+                        :description="__('Enables administrators to log directly into any user dashboard anonymously for diagnostics, student assistance, and verification.')"
+                        :checked="(bool) $form['allow_user_impersonation']"
                     />
                 </div>
             </div>

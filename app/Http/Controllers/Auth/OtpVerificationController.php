@@ -105,9 +105,10 @@ class OtpVerificationController extends Controller
             }
         }
 
-        $redirectUrl = $targetUser
-            ? route('dashboard', ['current_team' => $targetUser->current_team_id ?: $targetUser->personalTeam()?->id])
-            : route('login');
+        $team = $targetUser?->currentTeam ?? $targetUser?->personalTeam();
+        $redirectUrl = ($targetUser && $team)
+            ? route('dashboard', ['current_team' => $team->slug])
+            : ($targetUser ? route('home') : route('login'));
 
         if ($request->wantsJson()) {
             return response()->json([

@@ -1,5 +1,5 @@
 @php
-    $navSections = [
+    $rawNavSections = [
         [
             'title' => __('MAIN'),
             'items' => [
@@ -9,74 +9,109 @@
         [
             'title' => __('STUDENTS'),
             'items' => [
-                ['icon' => 'users', 'label' => __('Students'), 'href' => route('admin.students.index'), 'active' => request()->routeIs('admin.students.*')],
-                ['icon' => 'file-text', 'label' => __('Admissions'), 'href' => route('admin.admissions.index'), 'active' => request()->routeIs('admin.admissions.*')],
-                ['icon' => 'book-open', 'label' => __('Enrollments'), 'href' => route('admin.enrollments.index'), 'active' => request()->routeIs('admin.enrollments.*')],
+                ['icon' => 'users', 'label' => __('Students'), 'href' => route('admin.students.index'), 'active' => request()->routeIs('admin.students.*'), 'permission' => 'students.view'],
+                ['icon' => 'file-text', 'label' => __('Admissions'), 'href' => route('admin.admissions.index'), 'active' => request()->routeIs('admin.admissions.*'), 'permission' => 'admissions.view'],
+                ['icon' => 'book-open', 'label' => __('Enrollments'), 'href' => route('admin.enrollments.index'), 'active' => request()->routeIs('admin.enrollments.*'), 'permission' => 'students.view'],
             ],
         ],
         [
             'title' => __('ACADEMICS'),
             'items' => [
-                ['icon' => 'graduation-cap', 'label' => __('Courses'), 'href' => route('admin.courses.index'), 'active' => request()->routeIs('admin.courses.*')],
-                ['icon' => 'layers', 'label' => __('Batches'), 'href' => route('admin.batches.index'), 'active' => request()->routeIs('admin.batches.*')],
-                ['icon' => 'clipboard-check', 'label' => __('Tests & Selections'), 'href' => route('admin.tests.index'), 'active' => request()->routeIs('admin.tests.*')],
+                ['icon' => 'graduation-cap', 'label' => __('Courses'), 'href' => route('admin.courses.index'), 'active' => request()->routeIs('admin.courses.*'), 'permission' => 'courses.manage'],
+                ['icon' => 'layers', 'label' => __('Batches'), 'href' => route('admin.batches.index'), 'active' => request()->routeIs('admin.batches.*'), 'permission' => 'batches.manage'],
+                ['icon' => 'clipboard-check', 'label' => __('Tests & Selections'), 'href' => route('admin.tests.index'), 'active' => request()->routeIs('admin.tests.*'), 'permission' => 'tests.manage'],
             ],
         ],
         [
             'title' => __('USER & ACCESS MANAGEMENT'),
             'items' => [
-                ['icon' => 'user-cog', 'label' => __('Users'), 'href' => route('admin.users.index'), 'active' => request()->routeIs('admin.users.*')],
-                ['icon' => 'shield', 'label' => __('Roles'), 'href' => route('admin.roles.index'), 'active' => request()->routeIs('admin.roles.*')],
+                ['icon' => 'user-cog', 'label' => __('Users'), 'href' => route('admin.users.index'), 'active' => request()->routeIs('admin.users.*'), 'permission' => 'users.view'],
+                ['icon' => 'shield', 'label' => __('Roles'), 'href' => route('admin.roles.index'), 'active' => request()->routeIs('admin.roles.*'), 'permission' => 'roles.view'],
+                ['icon' => 'key', 'label' => __('Permissions'), 'href' => route('admin.permissions.index'), 'active' => request()->routeIs('admin.permissions.*'), 'permission' => 'permissions.manage'],
+                ['icon' => 'activity', 'label' => __('My Activity'), 'href' => route('admin.user-activity.index'), 'active' => request()->routeIs('admin.user-activity.*')],
             ],
         ],
         [
             'title' => __('COMMUNICATIONS'),
             'items' => [
-                ['icon' => 'activity', 'label' => __('Delivery Logs'), 'href' => route('admin.communications.logs'), 'active' => request()->routeIs('admin.communications.logs*')],
-                ['icon' => 'send', 'label' => __('Send & Drafts'), 'href' => route('admin.communications.compose'), 'active' => request()->routeIs('admin.communications.compose*')],
-                ['icon' => 'smartphone', 'label' => __('SMS Templates'), 'href' => route('admin.sms-templates.index'), 'active' => request()->routeIs('admin.sms-templates.*')],
-                ['icon' => 'mail', 'label' => __('Email Templates'), 'href' => route('admin.email-templates.index'), 'active' => request()->routeIs('admin.email-templates.*')],
+                ['icon' => 'user-plus', 'label' => __('Subscribers & Leads'), 'href' => route('admin.subscribers.index'), 'active' => request()->routeIs('admin.subscribers.*'), 'permission' => 'subscribers.view'],
+                ['icon' => 'activity', 'label' => __('Delivery Logs'), 'href' => route('admin.communications.logs'), 'active' => request()->routeIs('admin.communications.logs*'), 'permission' => 'communications.view'],
+                ['icon' => 'send', 'label' => __('Send & Drafts'), 'href' => route('admin.communications.compose'), 'active' => request()->routeIs('admin.communications.compose*'), 'permission' => 'communications.send'],
+                ['icon' => 'smartphone', 'label' => __('SMS Templates'), 'href' => route('admin.sms-templates.index'), 'active' => request()->routeIs('admin.sms-templates.*'), 'permission' => 'templates.manage'],
+                ['icon' => 'mail', 'label' => __('Email Templates'), 'href' => route('admin.email-templates.index'), 'active' => request()->routeIs('admin.email-templates.*'), 'permission' => 'templates.manage'],
             ],
         ],
         [
             'title' => __('CONTENT & CMS'),
             'items' => [
-                ['icon' => 'file-text', 'label' => __('Pages Management'), 'href' => route('admin.pages.index'), 'active' => request()->routeIs('admin.pages.*')],
+                ['icon' => 'file-text', 'label' => __('Pages Management'), 'href' => route('admin.pages.index'), 'active' => request()->routeIs('admin.pages.*'), 'permission' => 'pages.manage'],
             ],
         ],
         [
             'title' => __('SUPPORT & HELPDESK'),
             'items' => [
-                ['icon' => 'mail', 'label' => __('Contact Inquiries'), 'href' => route('admin.contacts.index'), 'active' => request()->routeIs('admin.contacts.*')],
+                ['icon' => 'life-buoy', 'label' => __('Support Tickets'), 'href' => route('admin.tickets.index'), 'active' => request()->routeIs('admin.tickets.index', 'admin.tickets.show'), 'permission' => 'tickets.view'],
+                ['icon' => 'tag', 'label' => __('Categories & SLAs'), 'href' => route('admin.tickets.categories'), 'active' => request()->routeIs('admin.tickets.categories*'), 'permission' => 'tickets.categories'],
+                ['icon' => 'message-square-quote', 'label' => __('Canned Macros'), 'href' => route('admin.tickets.canned-responses'), 'active' => request()->routeIs('admin.tickets.canned-responses*'), 'permission' => 'tickets.canned_responses'],
+                ['icon' => 'mail', 'label' => __('Contact Inquiries'), 'href' => route('admin.contacts.index'), 'active' => request()->routeIs('admin.contacts.*'), 'permission' => 'contacts.manage'],
             ],
         ],
         [
             'title' => __('REPORTS'),
             'items' => [
-                ['icon' => 'bar-chart-3', 'label' => __('All reports'), 'href' => route('admin.reports.index'), 'active' => request()->routeIs('admin.reports.index')],
-                ['icon' => 'bookmark', 'label' => __('Saved reports'), 'href' => route('admin.reports.saved'), 'active' => request()->routeIs('admin.reports.saved')],
+                ['icon' => 'bar-chart-3', 'label' => __('All reports'), 'href' => route('admin.reports.index'), 'active' => request()->routeIs('admin.reports.index'), 'permission' => 'reports.view'],
+                ['icon' => 'bookmark', 'label' => __('Saved reports'), 'href' => route('admin.reports.saved'), 'active' => request()->routeIs('admin.reports.saved'), 'permission' => 'reports.view'],
             ],
         ],
         [
             'title' => __('SYSTEM'),
             'items' => [
-                ['icon' => 'clock', 'label' => __('Cron Jobs'), 'href' => route('admin.cron-jobs.index'), 'active' => request()->routeIs('admin.cron-jobs.*')],
+                ['icon' => 'database', 'label' => __('Database & Backups'), 'href' => route('admin.backups.index'), 'active' => request()->routeIs('admin.backups.*') || request()->routeIs('admin.settings.backup'), 'permission' => 'settings.backup'],
+                ['icon' => 'clock', 'label' => __('Cron Jobs'), 'href' => route('admin.cron-jobs.index'), 'active' => request()->routeIs('admin.cron-jobs.*'), 'permission' => 'settings.cron'],
                 ['icon' => 'user-circle', 'label' => __('Profile'), 'href' => route('admin.profile.show'), 'active' => request()->routeIs('admin.profile.*')],
-                ['icon' => 'shield-check', 'label' => __('Audit Logs'), 'href' => route('admin.audit-logs.index'), 'active' => request()->routeIs('admin.audit-logs.*')],
+                ['icon' => 'shield-check', 'label' => __('Audit Logs'), 'href' => route('admin.audit-logs.index'), 'active' => request()->routeIs('admin.audit-logs.*'), 'permission' => 'audit.view'],
                 [
                     'icon' => 'settings',
                     'label' => __('Settings'),
                     'children' => [
                         ['icon' => 'user', 'label' => __('Profile settings'), 'href' => route('profile.edit'), 'active' => request()->routeIs('profile.edit')],
                         ['icon' => 'lock', 'label' => __('Security'), 'href' => route('security.edit'), 'active' => request()->routeIs('security.edit')],
-                        ['icon' => 'palette', 'label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit')],
-                        ['icon' => 'users', 'label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*')],
-                        ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.*')],
+                        ['icon' => 'palette', 'label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit'), 'permission' => 'settings.appearance'],
+                        ['icon' => 'users', 'label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*'), 'permission' => 'settings.general'],
+                        ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.*'), 'permission' => 'settings.general'],
                     ],
                 ],
             ],
         ],
     ];
+
+    $user = auth()->user();
+
+    $navSections = collect($rawNavSections)->map(function ($section) use ($user) {
+        $filteredItems = collect($section['items'])->map(function ($item) use ($user) {
+            if (isset($item['permission']) && ! ($user?->can($item['permission']) || $user?->hasRole('Super Administrator'))) {
+                return null;
+            }
+
+            if (isset($item['children'])) {
+                $filteredChildren = collect($item['children'])->filter(function ($child) use ($user) {
+                    return ! isset($child['permission']) || $user?->can($child['permission']) || $user?->hasRole('Super Administrator');
+                })->values()->all();
+
+                if (empty($filteredChildren)) {
+                    return null;
+                }
+
+                $item['children'] = $filteredChildren;
+            }
+
+            return $item;
+        })->filter()->values()->all();
+
+        $section['items'] = $filteredItems;
+
+        return $section;
+    })->filter(fn ($section) => count($section['items']) > 0)->values()->all();
 
     $appName = \App\Models\Setting::appName();
 @endphp

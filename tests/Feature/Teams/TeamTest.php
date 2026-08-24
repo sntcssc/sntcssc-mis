@@ -3,10 +3,16 @@
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\RbacService;
 use Livewire\Livewire;
+
+beforeEach(function () {
+    RbacService::seedDefaults();
+});
 
 test('teams index page can be rendered', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
 
     $response = $this
         ->actingAs($user)
@@ -53,6 +59,7 @@ test('team slug uses next available suffix', function () {
 
 test('team edit page can be rendered', function () {
     $user = User::factory()->create();
+    $user->assignRole('Super Administrator');
     $team = Team::factory()->create();
     $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
 

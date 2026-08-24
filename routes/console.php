@@ -1,9 +1,17 @@
 <?php
 
 use App\Models\CronJob;
+use App\Models\TeamInvitation;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
+
+Schedule::call(function () {
+    TeamInvitation::query()
+        ->whereNotNull('expires_at')
+        ->where('expires_at', '<=', now())
+        ->delete();
+})->daily();
 
 try {
     if (Schema::hasTable('cron_jobs')) {

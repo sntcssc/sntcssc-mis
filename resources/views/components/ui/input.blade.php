@@ -39,7 +39,10 @@
     </div>
 
     @if ($error)
-        <p class="mt-1.5 text-xs text-destructive">{{ $error }}</p>
+        <p class="mt-1.5 text-xs text-destructive flex items-center gap-1 font-medium">
+            <x-icon name="alert-circle" class="h-3.5 w-3.5 shrink-0"/>
+            <span>{{ $error }}</span>
+        </p>
     @elseif ($hint)
         <p class="mt-1.5 text-xs text-muted-foreground">{{ $hint }}</p>
     @endif
