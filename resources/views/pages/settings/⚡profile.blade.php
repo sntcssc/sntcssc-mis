@@ -18,6 +18,7 @@ new #[Title('Profile settings')] class extends Component {
 
     public string $name = '';
     public string $email = '';
+    public string $phone = '';
 
     public string $language = 'en';
     public string $timezone = 'Asia/Kolkata';
@@ -33,6 +34,7 @@ new #[Title('Profile settings')] class extends Component {
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        $this->phone = Auth::user()->phone ?? '';
 
         $this->language = (string) (session('locale') ?? Setting::get('localization.language', 'en'));
         $this->timezone = (string) Setting::get('localization.timezone', 'Asia/Kolkata');
@@ -85,6 +87,10 @@ new #[Title('Profile settings')] class extends Component {
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;
+        }
+
+        if ($user->isDirty('phone')) {
+            $user->phone_verified_at = null;
         }
 
         $user->save();
@@ -211,25 +217,25 @@ new #[Title('Profile settings')] class extends Component {
         <form wire:submit="updateProfileInformation" class="space-y-5 rounded-xl border border-border bg-card p-5">
             <x-ui.input wire:model="name" :label="__('Name') .' *'" type="text" required autofocus autocomplete="name" :error="$errors->first('name')"/>
 
-            <div>
-                <x-ui.input wire:model="email" :label="__('Email') .' *'" type="email" required autocomplete="email" :error="$errors->first('email')"/>
+            <x-ui.input wire:model="email" :label="__('Email') .' *'" type="email" required autocomplete="email" :error="$errors->first('email')"/>
 
-                @if ($this->hasUnverifiedEmail)
-                    <div class="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-                        {{ __('Your email address is unverified.') }}
+            <x-ui.input wire:model="phone" :label="__('Mobile Number')" type="tel" placeholder="+91 98765 43210" :error="$errors->first('phone')"/>
 
-                        <button type="button" wire:click.prevent="resendVerificationNotification" class="font-medium underline cursor-pointer">
-                            {{ __('Click here to re-send the verification email.') }}
-                        </button>
+            @if ($this->hasUnverifiedEmail)
+                <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+                    {{ __('Your email address is unverified.') }}
 
-                        @if (session('status') === 'verification-link-sent')
-                            <p class="mt-1 font-medium text-emerald-600 dark:text-emerald-400">
-                                {{ __('A new verification link has been sent to your email address.') }}
-                            </p>
-                        @endif
-                    </div>
-                @endif
-            </div>
+                    <button type="button" wire:click.prevent="resendVerificationNotification" class="font-medium underline cursor-pointer">
+                        {{ __('Click here to re-send the verification email.') }}
+                    </button>
+
+                    @if (session('status') === 'verification-link-sent')
+                        <p class="mt-1 font-medium text-emerald-600 dark:text-emerald-400">
+                            {{ __('A new verification link has been sent to your email address.') }}
+                        </p>
+                    @endif
+                </div>
+            @endif
 
             <div class="flex items-center justify-end">
                 <x-ui.button type="submit" data-test="update-profile-button">

@@ -12,7 +12,13 @@
                 </div>
 
                 {{-- Right Navigation Controls --}}
-                <div class="flex items-center gap-2 sm:gap-3">
+                <div class="flex items-center gap-2 sm:gap-4">
+                    <nav class="hidden md:flex items-center gap-4 text-xs sm:text-sm font-medium text-muted-foreground mr-1">
+                        <a href="{{ route('home') }}" class="hover:text-foreground transition-colors">{{ __('Home') }}</a>
+                        <a href="{{ route('public.page', 'about-us') }}" class="hover:text-foreground transition-colors">{{ __('About Us') }}</a>
+                        <a href="{{ route('public.contact') }}" class="hover:text-foreground transition-colors">{{ __('Contact Us') }}</a>
+                    </nav>
+
                     {{-- Language Switcher --}}
                     <x-locale-switcher/>
 
@@ -23,8 +29,9 @@
                     <div class="flex items-center gap-2 pl-1 sm:pl-2 border-l border-border/60">
                         @if (Route::has('login'))
                             @auth
+                                @php($dashUrl = auth()->user()?->currentTeam ? route('dashboard', auth()->user()->currentTeam->slug) : url('/dashboard'))
                                 <a
-                                    href="{{ route('dashboard') }}"
+                                    href="{{ $dashUrl }}"
                                     class="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 transition-all cursor-pointer"
                                 >
                                     <x-icon name="layout-dashboard" class="h-4 w-4"/>
@@ -88,7 +95,7 @@
                     <div class="mt-8 sm:mt-10 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
                         @auth
                             <a
-                                href="{{ route('dashboard') }}"
+                                href="{{ $dashUrl }}"
                                 class="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm sm:text-base font-semibold text-primary-foreground shadow-md hover:bg-primary/90 transition-all cursor-pointer"
                             >
                                 <x-icon name="layout-dashboard" class="h-5 w-5"/>
@@ -223,19 +230,97 @@
             </section>
         </main>
 
-        {{-- Modern Footer --}}
-        <footer class="border-t border-border bg-card/60 py-8 sm:py-10 text-xs text-muted-foreground">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div class="flex items-center gap-2.5">
-                    <x-app-logo :hideText="true"/>
-                    <span class="font-semibold text-sm text-foreground">{{ \App\Models\Setting::appName() }}</span>
+        {{-- Modern Institutional Multi-Column Footer --}}
+        <footer class="border-t border-border bg-card/60 pt-12 pb-8 text-xs text-muted-foreground">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-12">
+                    {{-- Col 1 & 2: Branding & Description --}}
+                    <div class="lg:col-span-2 space-y-4">
+                        <div class="flex items-center gap-2.5">
+                            <x-app-logo :hideText="true"/>
+                            <span class="font-bold text-base text-foreground">{{ \App\Models\Setting::appName() }}</span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-sm">
+                            {{ \App\Models\Setting::get('general.site_description') ?: __('Integrated Management Information System for Civil Services Aspirants & Administration.') }}
+                        </p>
+                        <div class="text-xs space-y-1 text-muted-foreground">
+                            <p class="flex items-center gap-1.5">
+                                <x-icon name="map-pin" class="h-3.5 w-3.5 text-primary shrink-0"/>
+                                <span>{{ \App\Models\Setting::get('general.site_address', 'Main Campus, Kolkata, West Bengal, India') }}</span>
+                            </p>
+                            <p class="flex items-center gap-1.5">
+                                <x-icon name="clock" class="h-3.5 w-3.5 text-primary shrink-0"/>
+                                <span>{{ \App\Models\Setting::get('general.site_timing', '10:00 AM – 6:00 PM') }} ({{ \App\Models\Setting::get('general.site_open_days', 'Mon – Sat') }})</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    {{-- Col 3: Navigation --}}
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-foreground">{{ __('Quick Links') }}</h4>
+                        <ul class="space-y-2 text-xs">
+                            <li><a href="{{ route('home') }}" class="hover:text-primary transition-colors">{{ __('Home') }}</a></li>
+                            <li><a href="{{ route('public.page', 'about-us') }}" class="hover:text-primary transition-colors">{{ __('About Us') }}</a></li>
+                            <li><a href="{{ route('public.contact') }}" class="hover:text-primary transition-colors">{{ __('Contact Desk') }}</a></li>
+                            @auth
+                                <li><a href="{{ $dashUrl }}" class="hover:text-primary transition-colors">{{ __('MIS Dashboard') }}</a></li>
+                            @else
+                                <li><a href="{{ route('login') }}" class="hover:text-primary transition-colors">{{ __('Student Login') }}</a></li>
+                                @if (Route::has('register'))
+                                    <li><a href="{{ route('register') }}" class="hover:text-primary transition-colors">{{ __('Admissions Portal') }}</a></li>
+                                @endif
+                            @endauth
+                        </ul>
+                    </div>
+
+                    {{-- Col 4: Institutional Policies --}}
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-foreground">{{ __('Policies & Governance') }}</h4>
+                        <ul class="space-y-2 text-xs">
+                            <li><a href="{{ route('public.page', 'privacy-policy') }}" class="hover:text-primary transition-colors">{{ __('Privacy Policy') }}</a></li>
+                            <li><a href="{{ route('public.page', 'terms-and-conditions') }}" class="hover:text-primary transition-colors">{{ __('Terms & Conditions') }}</a></li>
+                            <li><a href="{{ route('public.page', 'refund-and-cancellation-policy') }}" class="hover:text-primary transition-colors">{{ __('Refund & Cancellation') }}</a></li>
+                            <li><a href="{{ route('public.page', 'legal-disclaimer') }}" class="hover:text-primary transition-colors">{{ __('Legal Disclaimer') }}</a></li>
+                            <li><a href="{{ route('public.page', 'copyright-policy') }}" class="hover:text-primary transition-colors">{{ __('Copyright Policy') }}</a></li>
+                            <li><a href="{{ route('public.page', 'hyperlink-policy') }}" class="hover:text-primary transition-colors">{{ __('Hyperlink Policy') }}</a></li>
+                        </ul>
+                    </div>
+
+                    {{-- Col 5: Helpdesk & Contacts --}}
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-foreground">{{ __('Admissions Helpdesk') }}</h4>
+                        <div class="space-y-2 text-xs">
+                            <p class="text-muted-foreground">
+                                {{ __('Email') }}: <a href="mailto:{{ \App\Models\Setting::get('general.site_email', 'info@sntcssc.in') }}" class="text-primary hover:underline">{{ \App\Models\Setting::get('general.site_email', 'info@sntcssc.in') }}</a>
+                            </p>
+                            <p class="text-muted-foreground">
+                                {{ __('Phone') }}: <span class="font-mono text-foreground">{{ \App\Models\Setting::get('general.site_phone', '033 0000 0000') }}</span>
+                            </p>
+                            <p class="text-muted-foreground">
+                                {{ __('Mobile') }}: <span class="font-mono text-foreground">{{ \App\Models\Setting::get('general.site_mobile', '+91 90000 00000') }}</span>
+                            </p>
+                            <div class="pt-2">
+                                <a
+                                    href="{{ route('public.contact') }}"
+                                    class="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all cursor-pointer"
+                                >
+                                    <x-icon name="send" class="h-3.5 w-3.5"/>
+                                    <span>{{ __('Submit Inquiry') }}</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <p class="text-center">{{ \App\Models\Setting::copyrightText() }}</p>
+                {{-- Bottom Bar --}}
+                <div class="border-t border-border pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p class="text-center sm:text-left">{{ \App\Models\Setting::copyrightText() }}</p>
 
-                <div class="flex items-center gap-4">
-                    <a href="{{ route('home') }}" class="hover:text-foreground transition-colors">{{ __('Home') }}</a>
-                    <a href="{{ route('login') }}" class="hover:text-foreground transition-colors">{{ __('Portal Login') }}</a>
+                    <div class="flex items-center gap-4 text-xs">
+                        <a href="{{ route('public.page', 'privacy-policy') }}" class="hover:text-foreground transition-colors">{{ __('Privacy') }}</a>
+                        <a href="{{ route('public.page', 'terms-and-conditions') }}" class="hover:text-foreground transition-colors">{{ __('Terms') }}</a>
+                        <a href="{{ route('public.contact') }}" class="hover:text-foreground transition-colors">{{ __('Support') }}</a>
+                    </div>
                 </div>
             </div>
         </footer>

@@ -126,14 +126,20 @@ new #[Layout('layouts.app')] #[Title('SMS Gateway Settings')] class extends Comp
         ]);
 
         try {
-            if ($this->form['driver'] === 'log' || ! $this->form['enabled']) {
-                Toast::dispatch($this, 'info', __('SMS sent to log driver. Check storage/logs/laravel.log.'));
+            $smsService = app(\App\Services\SmsService::class);
+            $message = 'Test verification OTP is '.random_int(100000, 999999).' for '.Setting::appName().'. Valid for 5 minutes.';
+            $dispatched = $smsService->send(
+                $this->testPhone,
+                $message,
+                $this->form['two_factor_template_name'] ?: null,
+                $this->form['two_factor_sender_id'] ?: null
+            );
 
-                return;
+            if ($dispatched) {
+                Toast::dispatch($this, 'success', __('Test SMS dispatched to :phone successfully.', ['phone' => $this->testPhone]));
+            } else {
+                Toast::dispatch($this, 'warning', __('SMS service is disabled or delivery returned false. Check configuration.'));
             }
-
-            // Simulated dispatch / test notification
-            Toast::dispatch($this, 'success', __('Test SMS dispatched to :phone successfully.', ['phone' => $this->testPhone]));
         } catch (\Throwable $e) {
             Log::error('SMS dispatch failed: '.$e->getMessage(), ['exception' => $e]);
             Toast::dispatch($this, 'error', __('SMS sending failed: :msg', ['msg' => $e->getMessage()]));

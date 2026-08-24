@@ -25,6 +25,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             SettingsSeeder::class,
             LanguageSeeder::class,
+            MessageTemplateSeeder::class,
+            PageSeeder::class,
+            ContactMasterSeeder::class,
         ]);
     }
 }

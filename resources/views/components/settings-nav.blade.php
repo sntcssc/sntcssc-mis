@@ -52,8 +52,8 @@
     ];
 @endphp
 
-<div class="border-b border-border mb-6">
-    <div class="flex items-center gap-1 overflow-x-auto pb-px scrollbar-none">
+<div class="border-b border-border mb-6 w-full">
+    <div class="flex items-center gap-1 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent">
         @foreach ($tabs as $key => $tab)
             @php
                 $isActive = $active === $key;
@@ -62,7 +62,7 @@
             <a
                 href="{{ $href }}"
                 wire:navigate
-                class="flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium rounded-t-lg border-b-2 transition-all whitespace-nowrap {{ $isActive ? 'border-primary text-primary bg-primary/5 font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/40' }}"
+                class="flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium rounded-t-lg border-b-2 transition-all shrink-0 whitespace-nowrap {{ $isActive ? 'border-primary text-primary bg-primary/5 font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/40' }}"
             >
                 <x-icon :name="$tab['icon']" class="h-4 w-4 shrink-0 {{ $isActive ? 'text-primary' : 'text-muted-foreground' }}"/>
                 <span>{{ $tab['label'] }}</span>

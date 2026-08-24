@@ -30,6 +30,27 @@
             ],
         ],
         [
+            'title' => __('COMMUNICATIONS'),
+            'items' => [
+                ['icon' => 'activity', 'label' => __('Delivery Logs'), 'href' => route('admin.communications.logs'), 'active' => request()->routeIs('admin.communications.logs*')],
+                ['icon' => 'send', 'label' => __('Send & Drafts'), 'href' => route('admin.communications.compose'), 'active' => request()->routeIs('admin.communications.compose*')],
+                ['icon' => 'smartphone', 'label' => __('SMS Templates'), 'href' => route('admin.sms-templates.index'), 'active' => request()->routeIs('admin.sms-templates.*')],
+                ['icon' => 'mail', 'label' => __('Email Templates'), 'href' => route('admin.email-templates.index'), 'active' => request()->routeIs('admin.email-templates.*')],
+            ],
+        ],
+        [
+            'title' => __('CONTENT & CMS'),
+            'items' => [
+                ['icon' => 'file-text', 'label' => __('Pages Management'), 'href' => route('admin.pages.index'), 'active' => request()->routeIs('admin.pages.*')],
+            ],
+        ],
+        [
+            'title' => __('SUPPORT & HELPDESK'),
+            'items' => [
+                ['icon' => 'mail', 'label' => __('Contact Inquiries'), 'href' => route('admin.contacts.index'), 'active' => request()->routeIs('admin.contacts.*')],
+            ],
+        ],
+        [
             'title' => __('REPORTS'),
             'items' => [
                 ['icon' => 'bar-chart-3', 'label' => __('All reports'), 'href' => route('admin.reports.index'), 'active' => request()->routeIs('admin.reports.index')],
@@ -39,6 +60,7 @@
         [
             'title' => __('SYSTEM'),
             'items' => [
+                ['icon' => 'clock', 'label' => __('Cron Jobs'), 'href' => route('admin.cron-jobs.index'), 'active' => request()->routeIs('admin.cron-jobs.*')],
                 ['icon' => 'user-circle', 'label' => __('Profile'), 'href' => route('admin.profile.show'), 'active' => request()->routeIs('admin.profile.*')],
                 ['icon' => 'shield-check', 'label' => __('Audit Logs'), 'href' => route('admin.audit-logs.index'), 'active' => request()->routeIs('admin.audit-logs.*')],
                 [

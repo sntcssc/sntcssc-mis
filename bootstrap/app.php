@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckMaintenanceMode;
+use App\Http\Middleware\EnsurePhoneAndEmailVerified;
 use App\Http\Middleware\SetAppLocale;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use Illuminate\Foundation\Application;
@@ -20,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
             CheckMaintenanceMode::class,
             SetAppLocale::class,
             SetTeamUrlDefaults::class,
+        ]);
+
+        $middleware->alias([
+            'verified' => EnsurePhoneAndEmailVerified::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -1,3 +1,8 @@
+@php
+    $smsEnabled = \App\Services\SmsService::isEnabled();
+    $defaultCountryCode = (string) \App\Models\Setting::get('sms.default_country_code', '+91');
+@endphp
+
 <x-layouts::auth :title="__('Register')">
     <div class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm">
         <div class="flex flex-col items-center mb-6">
@@ -43,6 +48,17 @@
                 placeholder="email@example.com"
                 size="lg"
                 :error="$errors->first('email')"
+            />
+
+            <x-ui.input
+                name="phone"
+                :label="__('Mobile Number')"
+                value="{{ old('phone') }}"
+                type="tel"
+                placeholder="{{ $defaultCountryCode }} 98765 43210"
+                size="lg"
+                hint="{{ __('Used for SMS notifications and instant OTP sign-in.') }}"
+                :error="$errors->first('phone')"
             />
 
             <x-ui.password

@@ -27,5 +27,5 @@ foreach ($dirs as $dir) {
 }
 
 ksort($keys);
-echo "Total translatable keys: " . count($keys) . "\n";
-file_put_contents(__DIR__ . '/extracted_keys.json', json_encode(array_keys($keys), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+echo 'Total translatable keys: '.count($keys)."\n";
+file_put_contents(__DIR__.'/extracted_keys.json', json_encode(array_keys($keys), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
