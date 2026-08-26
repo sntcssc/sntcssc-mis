@@ -49,6 +49,11 @@
             'icon' => 'bell',
             'route' => 'admin.settings.notification',
         ],
+        'chat' => [
+            'label' => __('Live Chat & Calls'),
+            'icon' => 'message-square',
+            'route' => 'admin.settings.chat',
+        ],
         'system' => [
             'label' => __('System'),
             'icon' => 'cpu',

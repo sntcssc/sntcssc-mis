@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
@@ -221,6 +222,32 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
+     * Count unread live chat messages for user.
+     */
+    public function unreadChatMessagesCount(): int
+    {
+        return ChatMessageStatus::where('user_id', $this->id)
+            ->where('is_read', false)
+            ->where('is_deleted_for_me', false)
+            ->whereHas('message', fn ($q) => $q->where('is_deleted_for_everyone', false))
+            ->count();
+    }
+
+    /**
+     * Count open tickets for user or system if staff.
+     */
+    public function openTicketsCount(): int
+    {
+        if ($this->hasAnyRole(['Super Administrator', 'Administrator', 'Staff'])) {
+            return Ticket::whereIn('status', [Ticket::STATUS_OPEN, Ticket::STATUS_IN_PROGRESS, Ticket::STATUS_PENDING_USER])->count();
+        }
+
+        return Ticket::where('user_id', $this->id)
+            ->whereIn('status', [Ticket::STATUS_OPEN, Ticket::STATUS_IN_PROGRESS, Ticket::STATUS_PENDING_USER])
+            ->count();
+    }
+
+    /**
      * Determine if user account is locked.
      */
     public function isLocked(): bool
@@ -339,5 +366,41 @@ class User extends Authenticatable implements PasskeyUser
         }
 
         return FileUploadService::url($this->avatar);
+    }
+
+    /**
+     * Check if the user is currently online.
+     */
+    public function isOnline(): bool
+    {
+        if ($this->id === auth()->id()) {
+            return true;
+        }
+
+        if (Cache::has('user-online-'.$this->id)) {
+            return true;
+        }
+
+        if ($this->last_login_at && $this->last_login_at->gt(now()->subMinutes(15))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get human readable last seen or online status string.
+     */
+    public function lastSeenText(): string
+    {
+        if ($this->isOnline()) {
+            return __('Online');
+        }
+
+        if ($this->last_login_at) {
+            return __('Last seen :time', ['time' => $this->last_login_at->shortRelativeDiffForHumans()]);
+        }
+
+        return __('Offline');
     }
 }

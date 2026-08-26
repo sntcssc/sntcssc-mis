@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Auth\OtpLoginController;
 use App\Http\Controllers\Auth\OtpPasswordResetController;
 use App\Http\Controllers\Auth\OtpVerificationController;
+use App\Http\Controllers\ChatJoinController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\Public\UnsubscribeController;
 use App\Http\Middleware\EnsureTeamMembership;
@@ -49,6 +50,10 @@ Route::post('unsubscribe/{token}', [UnsubscribeController::class, 'process'])->n
 // paths like /settings/profile are not captured by /{current_team}/profile.
 require __DIR__.'/settings.php';
 
+// Public & Direct Chat & Meeting Join via Invite Code
+Route::get('live-chat/join/{code}', [ChatJoinController::class, 'join'])->name('chat.join')->middleware(['auth']);
+Route::get('meetings/join/{code}', [ChatJoinController::class, 'joinMeeting'])->name('meetings.join')->middleware(['auth']);
+
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
@@ -71,6 +76,14 @@ Route::prefix('{current_team}')
         // User Notification Center & Inbox
         Route::livewire('notifications', 'pages::portal.notifications')->name('notifications.index');
 
+        // Realtime Live Chat & Channels Portal
+        Route::livewire('chat', 'pages::portal.chat')->name('admin.chat.index');
+        Route::livewire('live-chat', 'pages::portal.chat')->name('chat.index');
+
+        // Dedicated Online Meetings & Video Conferencing
+        Route::livewire('meetings', 'pages::portal.meetings')->name('meetings.index');
+        Route::livewire('meetings/room/{uuid}', 'pages::portal.meeting-room')->name('meetings.room');
+
         // Admin Helpdesk Desk & Ticket Management
         Route::livewire('support/tickets', 'pages::admin.tickets')->name('admin.tickets.index')->middleware('can:tickets.view');
         Route::livewire('support/tickets/{ticket}', 'pages::admin.tickets.show')->name('admin.tickets.show')->middleware('can:tickets.view');
@@ -86,12 +99,14 @@ Route::prefix('{current_team}')
         Route::livewire('system/settings/payment', 'pages::admin.settings.payment')->name('admin.settings.payment')->middleware('can:settings.payment');
         Route::livewire('system/settings/sms', 'pages::admin.settings.sms')->name('admin.settings.sms')->middleware('can:settings.sms');
         Route::livewire('system/settings/notification', 'pages::admin.settings.notification')->name('admin.settings.notification')->middleware('can:settings.general');
+        Route::livewire('system/settings/chat', 'pages::admin.settings.chat')->name('admin.settings.chat')->middleware('can:settings.general');
         Route::livewire('system/settings/system', 'pages::admin.settings.system')->name('admin.settings.system')->middleware('can:settings.general');
         Route::livewire('system/settings/backup', 'pages::admin.settings.backup')->name('admin.settings.backup')->middleware('can:settings.backup');
 
         Route::livewire('system/backups', 'pages::admin.settings.backup')->name('admin.backups.index')->middleware('can:settings.backup');
         Route::livewire('communications/logs', 'pages::admin.communications.logs')->name('admin.communications.logs')->middleware('can:communications.view');
         Route::livewire('communications/compose', 'pages::admin.communications.compose')->name('admin.communications.compose')->middleware('can:communications.send');
+        Route::livewire('communications/broadcast', 'pages::admin.communications.broadcast-chat')->name('admin.chat.broadcast')->middleware('can:chat.broadcast');
         Route::livewire('marketing/subscribers', 'pages::admin.subscribers')->name('admin.subscribers.index')->middleware('can:subscribers.view');
         Route::livewire('system/templates/sms', 'pages::admin.templates.sms-templates')->name('admin.sms-templates.index')->middleware('can:templates.manage');
         Route::livewire('system/templates/email', 'pages::admin.templates.email-templates')->name('admin.email-templates.index')->middleware('can:templates.manage');

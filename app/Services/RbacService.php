@@ -138,6 +138,24 @@ class RbacService
                 'subscribers.export' => 'Export subscribers list to CSV and Excel',
                 'subscribers.import' => 'Import subscribers in bulk from CSV files',
             ],
+            'Live Chat & Calls' => [
+                'chat.access' => 'Access live chat portal and send messages',
+                'chat.create_group' => 'Create and administer group conversations',
+                'chat.create_channel' => 'Create and publish broadcast channels',
+                'chat.broadcast' => 'Dispatch bulk personalized broadcast messages to users',
+                'chat.voice_call' => 'Initiate and receive WebRTC voice audio calls',
+                'chat.video_call' => 'Initiate and receive WebRTC video calls',
+                'chat.pin_message' => 'Pin and unpin messages in conversations',
+                'chat.delete_for_everyone' => 'Delete messages for everyone in group or channel',
+                'chat.manage_settings' => 'Configure live chat and WebRTC calling parameters',
+            ],
+            'Online Meetings' => [
+                'meetings.view' => 'View online meetings list and upcoming sessions',
+                'meetings.create' => 'Create instant and schedule online meetings',
+                'meetings.manage' => 'Edit, update, and cancel scheduled online meetings',
+                'meetings.co_host' => 'Act as co-host, admit waiting room attendees, and manage restrictions',
+                'meetings.manage_settings' => 'Configure global online meeting duration and feature policies',
+            ],
             'System Settings' => [
                 'settings.general' => 'Configure institution identity, logos, and general settings',
                 'settings.appearance' => 'Configure themes, logos, branding, and color palettes',
@@ -145,9 +163,12 @@ class RbacService
                 'settings.security' => 'Configure authentication rules and lockout security',
                 'settings.email' => 'Configure SMTP, email delivery, and testing',
                 'settings.sms' => 'Configure SMS gateways (2Factor, Fast2SMS, MSG91)',
+                'settings.whatsapp' => 'Configure WhatsApp business gateway and notifications',
+                'settings.telegram' => 'Configure Telegram bot integration and alerts',
                 'settings.payment' => 'Configure payment gateways (Razorpay, PhonePe)',
                 'settings.backup' => 'Manage, trigger on-demand backups, and download database/media archives',
                 'settings.cron' => 'Manage automated scheduled system tasks and cron runners',
+                'settings.chat' => 'Configure live chat, WebRTC, and meeting server parameters',
             ],
         ];
     }
@@ -161,7 +182,7 @@ class RbacService
             // Seed permissions
             foreach (static::defaultPermissions() as $module => $permissions) {
                 foreach ($permissions as $name => $description) {
-                    Permission::firstOrCreate(
+                    Permission::updateOrCreate(
                         ['name' => $name, 'guard_name' => 'web'],
                         ['module' => $module, 'description' => $description]
                     );
@@ -187,14 +208,29 @@ class RbacService
                 } elseif ($roleName === 'Admissions Officer') {
                     $role->syncPermissions(Permission::whereIn('name', [
                         'students.view', 'students.create', 'admissions.view', 'admissions.review', 'admissions.manage_tests', 'communications.view',
+                        'chat.access', 'chat.create_group', 'chat.create_channel', 'chat.voice_call', 'chat.video_call',
+                        'meetings.view', 'meetings.create', 'meetings.manage', 'meetings.co_host',
                     ])->get());
                 } elseif ($roleName === 'Faculty') {
                     $role->syncPermissions(Permission::whereIn('name', [
                         'students.view', 'courses.manage', 'batches.manage', 'tests.manage', 'attendance.manage',
+                        'chat.access', 'chat.create_group', 'chat.create_channel', 'chat.voice_call', 'chat.video_call',
+                        'meetings.view', 'meetings.create', 'meetings.manage', 'meetings.co_host',
+                    ])->get());
+                } elseif ($roleName === 'Accountant') {
+                    $role->syncPermissions(Permission::whereIn('name', [
+                        'students.view', 'reports.view', 'reports.export',
+                        'chat.access', 'chat.voice_call', 'chat.video_call', 'meetings.view',
                     ])->get());
                 } elseif ($roleName === 'Staff') {
                     $role->syncPermissions(Permission::whereIn('name', [
                         'students.view', 'admissions.view', 'contacts.manage', 'tickets.view', 'tickets.reply', 'tickets.internal_notes',
+                        'chat.access', 'chat.create_group', 'chat.create_channel', 'chat.voice_call', 'chat.video_call',
+                        'meetings.view', 'meetings.create',
+                    ])->get());
+                } elseif ($roleName === 'Student') {
+                    $role->syncPermissions(Permission::whereIn('name', [
+                        'chat.access', 'chat.voice_call', 'chat.video_call', 'meetings.view',
                     ])->get());
                 }
             }
@@ -240,33 +276,46 @@ class RbacService
     public static function updateRole(Role $role, array $data): Role
     {
         return DB::transaction(function () use ($role, $data) {
-            $oldPermissions = $role->permissions->pluck('name')->all();
+            $oldValues = [
+                'name' => $role->name,
+                'description' => $role->description,
+                'color' => $role->color,
+                'permissions' => $role->permissions->pluck('name')->all(),
+            ];
 
-            $updateData = [];
+            // Protect system role names
+            $updatePayload = [];
             if (! $role->is_system && isset($data['name'])) {
-                $updateData['name'] = $data['name'];
+                $updatePayload['name'] = $data['name'];
             }
-            if (isset($data['description'])) {
-                $updateData['description'] = $data['description'];
+            if (array_key_exists('description', $data)) {
+                $updatePayload['description'] = $data['description'];
             }
             if (isset($data['color'])) {
-                $updateData['color'] = $data['color'];
+                $updatePayload['color'] = $data['color'];
             }
 
-            if (! empty($updateData)) {
-                $role->update($updateData);
+            if (! empty($updatePayload)) {
+                $role->update($updatePayload);
             }
 
             if (isset($data['permissions'])) {
                 $role->syncPermissions($data['permissions']);
             }
 
+            $newValues = [
+                'name' => $role->name,
+                'description' => $role->description,
+                'color' => $role->color,
+                'permissions' => $role->permissions()->pluck('name')->all(),
+            ];
+
             AuditLogService::log(
                 event: 'role_updated',
-                description: "Updated role '{$role->name}' configuration and permissions.",
+                description: "Updated role '{$role->name}'.",
                 auditable: $role,
-                oldValues: ['permissions' => $oldPermissions],
-                newValues: ['permissions' => $data['permissions'] ?? $oldPermissions]
+                oldValues: $oldValues,
+                newValues: $newValues
             );
 
             return $role;
@@ -274,15 +323,15 @@ class RbacService
     }
 
     /**
-     * Clone an existing role to a new name.
+     * Clone an existing role into a new custom role with same permissions.
      */
-    public static function cloneRole(Role $sourceRole, string $newName, ?string $description = null): Role
+    public static function cloneRole(Role $sourceRole, string $newName, ?string $newDescription = null): Role
     {
-        return DB::transaction(function () use ($sourceRole, $newName, $description) {
+        return DB::transaction(function () use ($sourceRole, $newName, $newDescription) {
             $newRole = Role::create([
                 'name' => $newName,
                 'guard_name' => 'web',
-                'description' => $description ?? "Cloned from {$sourceRole->name}",
+                'description' => $newDescription ?: "Cloned from {$sourceRole->name}",
                 'color' => $sourceRole->color,
                 'is_system' => false,
             ]);
@@ -292,9 +341,9 @@ class RbacService
 
             AuditLogService::log(
                 event: 'role_cloned',
-                description: "Cloned role '{$sourceRole->name}' into new role '{$newRole->name}'.",
+                description: "Cloned role '{$sourceRole->name}' into new role '{$newRole->name}' with ".count($permissions).' permissions.',
                 auditable: $newRole,
-                newValues: ['name' => $newRole->name, 'cloned_from' => $sourceRole->name]
+                newValues: ['name' => $newRole->name, 'source_role' => $sourceRole->name, 'permissions' => $permissions]
             );
 
             return $newRole;
@@ -302,40 +351,60 @@ class RbacService
     }
 
     /**
-     * Safely delete a role.
+     * Delete a custom role safely.
      */
     public static function deleteRole(Role $role): bool
     {
         if ($role->is_system) {
             throw ValidationException::withMessages([
-                'role' => 'System protected roles cannot be deleted.',
-            ]);
-        }
-
-        $userCount = $role->users()->count();
-        if ($userCount > 0) {
-            throw ValidationException::withMessages([
-                'role' => "Cannot delete role '{$role->name}' because {$userCount} users are currently assigned to it.",
+                'role' => 'System default roles cannot be deleted to prevent access lockout.',
             ]);
         }
 
         return DB::transaction(function () use ($role) {
-            $roleName = $role->name;
-            $role->syncPermissions([]);
-            $deleted = $role->delete();
+            $userCount = $role->users()->count();
+            if ($userCount > 0) {
+                throw ValidationException::withMessages([
+                    'role' => "Cannot delete role '{$role->name}' because {$userCount} users are currently assigned to it. Reassign these users first.",
+                ]);
+            }
 
             AuditLogService::log(
                 event: 'role_deleted',
-                description: "Deleted custom role '{$roleName}'.",
-                oldValues: ['name' => $roleName]
+                description: "Deleted role '{$role->name}'.",
+                auditable: $role,
+                oldValues: ['name' => $role->name, 'permissions' => $role->permissions->pluck('name')->all()]
             );
 
-            return $deleted;
+            return (bool) $role->delete();
         });
     }
 
     /**
-     * Create a dynamic custom permission.
+     * Assign roles to a user with audit tracking.
+     *
+     * @param  array<string>  $roleNames
+     */
+    public static function assignRolesToUser(User $user, array $roleNames, ?User $actor = null): void
+    {
+        DB::transaction(function () use ($user, $roleNames, $actor) {
+            $oldRoles = $user->roles->pluck('name')->all();
+
+            $user->syncRoles($roleNames);
+
+            AuditLogService::log(
+                event: 'user_roles_synced',
+                description: "Updated roles for user '{$user->name}' to: ".implode(', ', $roleNames),
+                auditable: $user,
+                userId: $actor?->id,
+                oldValues: ['roles' => $oldRoles],
+                newValues: ['roles' => $roleNames]
+            );
+        });
+    }
+
+    /**
+     * Create a new granular permission.
      */
     public static function createPermission(string $name, string $module = 'General', ?string $description = null): Permission
     {
@@ -349,9 +418,9 @@ class RbacService
 
             AuditLogService::log(
                 event: 'permission_created',
-                description: "Created new permission key '{$perm->name}' under module '{$module}'.",
+                description: "Created permission key '{$perm->name}' under module '{$perm->module}'.",
                 auditable: $perm,
-                newValues: ['name' => $perm->name, 'module' => $module]
+                newValues: ['name' => $perm->name, 'module' => $perm->module, 'description' => $perm->description]
             );
 
             return $perm;
@@ -359,12 +428,16 @@ class RbacService
     }
 
     /**
-     * Update a dynamic permission.
+     * Update an existing permission.
      */
     public static function updatePermission(Permission $permission, string $name, string $module, ?string $description = null): Permission
     {
         return DB::transaction(function () use ($permission, $name, $module, $description) {
-            $old = $permission->toArray();
+            $oldValues = [
+                'name' => $permission->name,
+                'module' => $permission->module,
+                'description' => $permission->description,
+            ];
 
             $permission->update([
                 'name' => $name,
@@ -374,10 +447,10 @@ class RbacService
 
             AuditLogService::log(
                 event: 'permission_updated',
-                description: "Updated permission key '{$permission->name}'.",
+                description: "Updated permission '{$permission->name}'.",
                 auditable: $permission,
-                oldValues: $old,
-                newValues: $permission->toArray()
+                oldValues: $oldValues,
+                newValues: ['name' => $permission->name, 'module' => $permission->module, 'description' => $permission->description]
             );
 
             return $permission;
@@ -385,164 +458,19 @@ class RbacService
     }
 
     /**
-     * Delete a permission key.
+     * Delete a permission.
      */
     public static function deletePermission(Permission $permission): bool
     {
         return DB::transaction(function () use ($permission) {
-            $name = $permission->name;
-            $deleted = $permission->delete();
-
             AuditLogService::log(
                 event: 'permission_deleted',
-                description: "Deleted permission key '{$name}'.",
-                oldValues: ['name' => $name]
+                description: "Deleted permission '{$permission->name}' from module '{$permission->module}'.",
+                auditable: $permission,
+                oldValues: ['name' => $permission->name, 'module' => $permission->module]
             );
 
-            return $deleted;
-        });
-    }
-
-    /**
-     * Assign / synchronize roles for a user.
-     *
-     * @param  array<string>|string  $roles
-     */
-    public static function syncUserRoles(User $user, array|string $roles): void
-    {
-        DB::transaction(function () use ($user, $roles) {
-            $rolesList = (array) $roles;
-            $oldRoles = $user->roles->pluck('name')->all();
-
-            $user->syncRoles($rolesList);
-
-            AuditLogService::log(
-                event: 'user_roles_synced',
-                description: "Synchronized roles for user {$user->name} ({$user->email}) to: ".implode(', ', $rolesList),
-                auditable: $user,
-                oldValues: ['roles' => $oldRoles],
-                newValues: ['roles' => $rolesList]
-            );
-        });
-    }
-
-    /**
-     * Assign / synchronize direct permissions for a user.
-     *
-     * @param  array<string>  $permissions
-     */
-    public static function syncUserPermissions(User $user, array $permissions): void
-    {
-        DB::transaction(function () use ($user, $permissions) {
-            $oldPermissions = $user->getDirectPermissions()->pluck('name')->all();
-
-            $user->syncPermissions($permissions);
-
-            AuditLogService::log(
-                event: 'user_permissions_synced',
-                description: "Direct permissions synchronized for user {$user->name} ({$user->email}).",
-                auditable: $user,
-                oldValues: ['permissions' => $oldPermissions],
-                newValues: ['permissions' => $permissions]
-            );
-        });
-    }
-
-    /**
-     * Lock a user account with audit record.
-     */
-    public static function lockUser(User $user, ?string $reason = null, int $durationMinutes = 60): bool
-    {
-        return DB::transaction(function () use ($user, $reason, $durationMinutes) {
-            $until = now()->addMinutes($durationMinutes);
-            $user->lockAccount($until);
-
-            AuditLogService::log(
-                event: 'user_locked',
-                description: "User account {$user->name} ({$user->email}) locked until {$until->format('d M Y H:i')}. Reason: ".($reason ?: 'Administrative lock'),
-                auditable: $user,
-                newValues: ['locked_untill' => $until->toIso8601String(), 'reason' => $reason]
-            );
-
-            return true;
-        });
-    }
-
-    /**
-     * Unlock a user account with audit record.
-     */
-    public static function unlockUser(User $user): bool
-    {
-        return DB::transaction(function () use ($user) {
-            $user->unlockAccount();
-
-            AuditLogService::log(
-                event: 'user_unlocked',
-                description: "User account {$user->name} ({$user->email}) was unlocked by administrator.",
-                auditable: $user,
-                newValues: ['locked_untill' => null, 'status' => $user->status]
-            );
-
-            return true;
-        });
-    }
-
-    /**
-     * Soft delete user account.
-     */
-    public static function softDeleteUser(User $user): bool
-    {
-        return DB::transaction(function () use ($user) {
-            $deleted = $user->delete();
-
-            AuditLogService::log(
-                event: 'user_soft_deleted',
-                description: "Soft-deleted user account {$user->name} ({$user->email}).",
-                auditable: $user,
-                oldValues: $user->toArray()
-            );
-
-            return (bool) $deleted;
-        });
-    }
-
-    /**
-     * Restore soft deleted user.
-     */
-    public static function restoreUser(User $user): bool
-    {
-        return DB::transaction(function () use ($user) {
-            $restored = $user->restore();
-
-            AuditLogService::log(
-                event: 'user_restored',
-                description: "Restored soft-deleted user account {$user->name} ({$user->email}).",
-                auditable: $user,
-                newValues: $user->toArray()
-            );
-
-            return (bool) $restored;
-        });
-    }
-
-    /**
-     * Permanently force delete user account.
-     */
-    public static function forceDeleteUser(User $user): bool
-    {
-        return DB::transaction(function () use ($user) {
-            $userData = $user->toArray();
-            $user->roles()->detach();
-            $user->permissions()->detach();
-            $deleted = $user->forceDelete();
-
-            AuditLogService::log(
-                event: 'user_permanently_deleted',
-                description: "Permanently purged user record {$userData['name']} ({$userData['email']}).",
-                oldValues: $userData
-            );
-
-            return (bool) $deleted;
+            return (bool) $permission->delete();
         });
     }
 }

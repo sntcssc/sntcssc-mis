@@ -1,9 +1,15 @@
 @php
+    $user = auth()->user();
+    $unreadChatCount = $user ? $user->unreadChatMessagesCount() : 0;
+    $openTicketsCount = $user ? $user->openTicketsCount() : 0;
+
     $rawNavSections = [
         [
             'title' => __('MAIN'),
             'items' => [
                 ['icon' => 'layout-dashboard', 'label' => __('Dashboard'), 'href' => route('dashboard'), 'active' => request()->routeIs('dashboard')],
+                ['icon' => 'message-square', 'label' => __('Live Chat'), 'href' => route('admin.chat.index'), 'active' => request()->routeIs('admin.chat.*') || request()->routeIs('chat.*'), 'badge' => $unreadChatCount > 0 ? ($unreadChatCount > 99 ? '99+' : (string) $unreadChatCount) : null],
+                ['icon' => 'video', 'label' => __('Online Meetings'), 'href' => route('meetings.index'), 'active' => request()->routeIs('meetings.*')],
             ],
         ],
         [
@@ -35,6 +41,7 @@
             'title' => __('COMMUNICATIONS'),
             'items' => [
                 ['icon' => 'user-plus', 'label' => __('Subscribers & Leads'), 'href' => route('admin.subscribers.index'), 'active' => request()->routeIs('admin.subscribers.*'), 'permission' => 'subscribers.view'],
+                ['icon' => 'send', 'label' => __('Chat Broadcast Hub'), 'href' => route('admin.chat.broadcast'), 'active' => request()->routeIs('admin.chat.broadcast*'), 'permission' => 'chat.broadcast'],
                 ['icon' => 'activity', 'label' => __('Delivery Logs'), 'href' => route('admin.communications.logs'), 'active' => request()->routeIs('admin.communications.logs*'), 'permission' => 'communications.view'],
                 ['icon' => 'send', 'label' => __('Send & Drafts'), 'href' => route('admin.communications.compose'), 'active' => request()->routeIs('admin.communications.compose*'), 'permission' => 'communications.send'],
                 ['icon' => 'smartphone', 'label' => __('SMS Templates'), 'href' => route('admin.sms-templates.index'), 'active' => request()->routeIs('admin.sms-templates.*'), 'permission' => 'templates.manage'],
@@ -50,7 +57,7 @@
         [
             'title' => __('SUPPORT & HELPDESK'),
             'items' => [
-                ['icon' => 'life-buoy', 'label' => __('Support Tickets'), 'href' => route('admin.tickets.index'), 'active' => request()->routeIs('admin.tickets.index', 'admin.tickets.show'), 'permission' => 'tickets.view'],
+                ['icon' => 'life-buoy', 'label' => __('Support Tickets'), 'href' => route('admin.tickets.index'), 'active' => request()->routeIs('admin.tickets.index', 'admin.tickets.show'), 'permission' => 'tickets.view', 'badge' => $openTicketsCount > 0 ? (string) $openTicketsCount : null],
                 ['icon' => 'tag', 'label' => __('Categories & SLAs'), 'href' => route('admin.tickets.categories'), 'active' => request()->routeIs('admin.tickets.categories*'), 'permission' => 'tickets.categories'],
                 ['icon' => 'message-square-quote', 'label' => __('Canned Macros'), 'href' => route('admin.tickets.canned-responses'), 'active' => request()->routeIs('admin.tickets.canned-responses*'), 'permission' => 'tickets.canned_responses'],
                 ['icon' => 'mail', 'label' => __('Contact Inquiries'), 'href' => route('admin.contacts.index'), 'active' => request()->routeIs('admin.contacts.*'), 'permission' => 'contacts.manage'],
@@ -78,14 +85,13 @@
                         ['icon' => 'lock', 'label' => __('Security'), 'href' => route('security.edit'), 'active' => request()->routeIs('security.edit')],
                         ['icon' => 'palette', 'label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit'), 'permission' => 'settings.appearance'],
                         ['icon' => 'users', 'label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*'), 'permission' => 'settings.general'],
+                        ['icon' => 'message-square', 'label' => __('Live Chat & Calls'), 'href' => route('admin.settings.chat'), 'active' => request()->routeIs('admin.settings.chat'), 'permission' => 'settings.general'],
                         ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.*'), 'permission' => 'settings.general'],
                     ],
                 ],
             ],
         ],
     ];
-
-    $user = auth()->user();
 
     $navSections = collect($rawNavSections)->map(function ($section) use ($user) {
         $filteredItems = collect($section['items'])->map(function ($item) use ($user) {
@@ -179,7 +185,12 @@
                                         class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                     >
                                         <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
-                                        <span class="truncate">{{ $item['label'] }}</span>
+                                        <span class="truncate flex-1">{{ $item['label'] }}</span>
+                                        @if (!empty($item['badge']))
+                                            <span class="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground shadow-xs animate-pulse">
+                                                {{ $item['badge'] }}
+                                            </span>
+                                        @endif
                                     </a>
                                 </li>
                             @endif
@@ -198,7 +209,7 @@
         </div>
     </div>
 
-    {{-- Collapsed mode: icons only --}}
+    {{-- Collapsed mode: icons only with indicator dots --}}
     <div class="flex flex-col h-full min-h-0" x-show="collapsed" x-cloak>
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border shrink-0">
             <button
@@ -221,9 +232,12 @@
                                     href="{{ $item['href'] ?? '#' }}"
                                     wire:navigate
                                     title="{{ $item['label'] }}"
-                                    class="flex items-center justify-center rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
+                                    class="relative flex items-center justify-center rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                 >
                                     <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
+                                    @if (!empty($item['badge']))
+                                        <span class="absolute top-1 right-1 flex h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar"></span>
+                                    @endif
                                 </a>
                             </li>
                         @endforeach
@@ -311,7 +325,12 @@
                                         class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"
                                     >
                                         <x-icon :name="$item['icon']" class="h-4 w-4 shrink-0"/>
-                                        <span class="truncate">{{ $item['label'] }}</span>
+                                        <span class="truncate flex-1">{{ $item['label'] }}</span>
+                                        @if (!empty($item['badge']))
+                                            <span class="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground shadow-xs animate-pulse">
+                                                {{ $item['badge'] }}
+                                            </span>
+                                        @endif
                                     </a>
                                 </li>
                             @endif

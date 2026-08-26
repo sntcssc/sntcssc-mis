@@ -90,6 +90,24 @@
         {{-- Theme switcher: light / dark / system --}}
         <x-ui.theme-switch/>
 
+        {{-- Live Chat Quick Access Button with Unread Badge --}}
+        @php
+            $unreadChat = $user ? $user->unreadChatMessagesCount() : 0;
+        @endphp
+        <a
+            href="{{ route('admin.chat.index') }}"
+            wire:navigate
+            class="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            title="{{ __('Live Chat & Calls') }}"
+        >
+            <x-icon name="message-square" class="h-4 w-4" />
+            @if ($unreadChat > 0)
+                <span class="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow-xs animate-pulse">
+                    {{ $unreadChat > 99 ? '99+' : $unreadChat }}
+                </span>
+            @endif
+        </a>
+
         {{-- Realtime Interactive Notifications Bell & Drawer --}}
         <livewire:notification-bell />
 

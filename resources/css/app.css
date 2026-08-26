@@ -198,3 +198,27 @@
 .ui-content-in { animation: ui-content-in 180ms ease-out both; }
 .ui-popover-in { animation: ui-popover-in 130ms ease-out both; transform-origin: var(--ui-popover-origin, top right); }
 .ui-toast-in { animation: ui-toast-in 200ms ease-out both; }
+
+@keyframes float-up {
+    0% {
+        opacity: 0;
+        transform: translateY(20px) scale(0.6);
+    }
+    15% {
+        opacity: 1;
+        transform: translateY(0px) scale(1.2);
+    }
+    80% {
+        opacity: 0.9;
+        transform: translateY(-160px) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-240px) scale(0.8);
+    }
+}
+
+.animate-float-up {
+    animation: float-up 3s ease-out forwards;
+}
+

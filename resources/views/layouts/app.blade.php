@@ -82,6 +82,7 @@
         </div>
 
         <livewire:create-team-modal/>
+        <livewire:chat-call-overlay/>
 
         {{-- Global Livewire File Upload Progress Indicator --}}
         <div

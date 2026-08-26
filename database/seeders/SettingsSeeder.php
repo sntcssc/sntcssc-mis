@@ -173,6 +173,31 @@ class SettingsSeeder extends Seeder
             ['key' => 'email.from_name', 'value' => 'SNT CSSC MIS', 'group' => 'email', 'type' => Setting::TYPE_STRING, 'label' => 'From name'],
             ['key' => 'email.cc_to', 'value' => null, 'group' => 'email', 'type' => Setting::TYPE_STRING, 'label' => 'CC to'],
             ['key' => 'email.send_to', 'value' => null, 'group' => 'email', 'type' => Setting::TYPE_STRING, 'label' => 'Send test email to'],
+
+            /* ------------------------------------------------------- *
+             *  Live Chat & WebRTC Calling
+             * ------------------------------------------------------- */
+            ['key' => 'chat.enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Live Chat'],
+            ['key' => 'chat.direct_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Direct 1-on-1 Chat'],
+            ['key' => 'chat.group_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Group Chat'],
+            ['key' => 'chat.channel_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Broadcast Channels'],
+            ['key' => 'chat.voice_call_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable WebRTC Voice Calls'],
+            ['key' => 'chat.video_call_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable WebRTC Video Calls'],
+            ['key' => 'chat.transport_driver', 'value' => 'hybrid', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'Chat Realtime Transport', 'options' => ['hybrid' => 'Hybrid (Reverb WebSocket + Fallback Poll)', 'polling' => 'Livewire Polling Only (wire:poll)', 'broadcasting' => 'Broadcasting Only (Reverb WebSockets)']],
+            ['key' => 'chat.poll_interval', 'value' => '3s', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'Chat Polling Interval', 'options' => ['3s' => '3 Seconds', '5s' => '5 Seconds', '10s' => '10 Seconds', '30s' => '30 Seconds']],
+            ['key' => 'chat.webrtc_signaling_driver', 'value' => 'reverb', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'WebRTC Signaling Driver', 'options' => ['reverb' => 'Reverb / WebSockets Signaling', 'internal_poll' => 'Internal Polling Signal Exchange']],
+            ['key' => 'chat.webrtc_stun_server', 'value' => 'stun:stun.l.google.com:19302', 'group' => 'chat', 'type' => Setting::TYPE_STRING, 'label' => 'WebRTC STUN Server'],
+            ['key' => 'chat.webrtc_turn_server', 'value' => null, 'group' => 'chat', 'type' => Setting::TYPE_STRING, 'label' => 'WebRTC TURN Server (Optional)'],
+            ['key' => 'chat.webrtc_turn_username', 'value' => null, 'group' => 'chat', 'type' => Setting::TYPE_STRING, 'label' => 'TURN Username'],
+            ['key' => 'chat.webrtc_turn_credential', 'value' => null, 'group' => 'chat', 'type' => Setting::TYPE_SECRET, 'label' => 'TURN Credential'],
+            ['key' => 'chat.max_file_size_mb', 'value' => 25, 'group' => 'chat', 'type' => Setting::TYPE_NUMBER, 'label' => 'Max Attachment Size (MB)'],
+            ['key' => 'chat.allowed_file_types', 'value' => 'jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,ppt,pptx,zip,mp3,mp4,wav', 'group' => 'chat', 'type' => Setting::TYPE_STRING, 'label' => 'Allowed File Extensions'],
+            ['key' => 'chat.edit_time_limit_minutes', 'value' => 15, 'group' => 'chat', 'type' => Setting::TYPE_NUMBER, 'label' => 'Message Edit Window (Minutes)'],
+            ['key' => 'chat.notify_email', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send Email Alerts on Chat'],
+            ['key' => 'chat.notify_sms', 'value' => false, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send SMS Alerts on Chat'],
+            ['key' => 'chat.notify_whatsapp', 'value' => false, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send WhatsApp Alerts on Chat'],
+            ['key' => 'chat.notify_telegram', 'value' => false, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send Telegram Alerts on Chat'],
+            ['key' => 'chat.sound_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Play Chat Message Chimes'],
         ];
     }
 }

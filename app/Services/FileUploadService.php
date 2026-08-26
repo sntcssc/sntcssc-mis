@@ -78,6 +78,19 @@ class FileUploadService
     }
 
     /**
+     * Alias for store() for backward compatibility and generic file uploads.
+     */
+    public static function upload(
+        UploadedFile|TemporaryUploadedFile $file,
+        string $folder = 'uploads',
+        ?string $prefix = null,
+        string $disk = 'public',
+        ?string $oldPath = null
+    ): string {
+        return self::store($file, $folder, $prefix, $disk, $oldPath);
+    }
+
+    /**
      * Safely delete a file from storage.
      */
     public static function delete(?string $path, string $disk = 'public'): bool

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Permission;
+use App\Models\Role;
 use App\Services\AuditLogService;
 use App\Services\RbacService;
 use App\Services\RolePermissionExportService;
@@ -36,6 +37,10 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
         'description' => '',
     ];
 
+    // Assign Roles Modal state
+    public ?int $assignRolesPermissionId = null;
+    public array $assignedRoleIds = [];
+
     // Delete confirmation
     public ?int $deletePermissionId = null;
 
@@ -62,6 +67,22 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
     }
 
     #[Computed]
+    public function allRoles()
+    {
+        return Role::query()->orderBy('is_system', 'desc')->orderBy('name')->get();
+    }
+
+    #[Computed]
+    public function activeAssignPermission(): ?Permission
+    {
+        if (! $this->assignRolesPermissionId) {
+            return null;
+        }
+
+        return Permission::with('roles')->find($this->assignRolesPermissionId);
+    }
+
+    #[Computed]
     public function stats(): array
     {
         return [
@@ -74,6 +95,7 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
     public function permissions()
     {
         return Permission::query()
+            ->with(['roles'])
             ->withCount('roles')
             ->when($this->search, function (Builder $query, $search) {
                 $query->where('name', 'like', "%{$search}%")
@@ -148,6 +170,43 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
         }
 
         $this->dispatch('modal-close', name: 'permission-form-modal');
+    }
+
+    public function openAssignRolesModal(int $permId): void
+    {
+        $perm = Permission::with('roles')->findOrFail($permId);
+        $this->assignRolesPermissionId = $perm->id;
+        $this->assignedRoleIds = $perm->roles->pluck('id')->toArray();
+        $this->dispatch('modal-open', name: 'permission-assign-roles-modal');
+    }
+
+    public function saveAssignedRoles(): void
+    {
+        if (! $this->assignRolesPermissionId) {
+            return;
+        }
+
+        $perm = Permission::findOrFail($this->assignRolesPermissionId);
+        $roles = Role::all();
+
+        foreach ($roles as $role) {
+            $shouldHave = in_array($role->id, $this->assignedRoleIds);
+            $has = $role->hasPermissionTo($perm->name, 'web');
+
+            if ($shouldHave && ! $has) {
+                $role->givePermissionTo($perm->name);
+                AuditLogService::log('role_permission_granted', "Granted permission '{$perm->name}' to role '{$role->name}'.", $role);
+            } elseif (! $shouldHave && $has) {
+                if ($role->name === 'Super Administrator') {
+                    continue; // Protect root super admin
+                }
+                $role->revokePermissionTo($perm->name);
+                AuditLogService::log('role_permission_revoked', "Revoked permission '{$perm->name}' from role '{$role->name}'.", $role);
+            }
+        }
+
+        $this->dispatch('modal-close', name: 'permission-assign-roles-modal');
+        Toast::dispatch($this, 'success', __("Assigned roles updated for ':perm'.", ['perm' => $perm->name]));
     }
 
     public function openDeleteModal(int $id): void
@@ -278,17 +337,31 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
                             </td>
 
                             <td class="px-4 py-3.5 text-xs whitespace-nowrap">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600">
-                                    {{ $perm->roles_count }} {{ __('roles') }}
-                                </span>
+                                <button
+                                    type="button"
+                                    wire:click="openAssignRolesModal({{ $perm->id }})"
+                                    class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                                    title="{{ __('Click to manage assigned roles') }}"
+                                >
+                                    <x-icon name="shield" class="h-3 w-3" />
+                                    <span>{{ $perm->roles_count }} {{ __('roles') }}</span>
+                                </button>
                             </td>
 
                             <td class="px-4 py-3.5 text-right whitespace-nowrap">
                                 <div class="flex items-center justify-end gap-1">
                                     <button
                                         type="button"
+                                        wire:click="openAssignRolesModal({{ $perm->id }})"
+                                        class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                                        title="{{ __('Assign / Toggle Roles') }}"
+                                    >
+                                        <x-icon name="shield-check" class="h-3.5 w-3.5"/>
+                                    </button>
+                                    <button
+                                        type="button"
                                         wire:click="edit({{ $perm->id }})"
-                                        class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                                        class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
                                         title="{{ __('Edit') }}"
                                     >
                                         <x-icon name="pencil" class="h-3.5 w-3.5"/>
@@ -296,7 +369,7 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
                                     <button
                                         type="button"
                                         wire:click="openDeleteModal({{ $perm->id }})"
-                                        class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                                         title="{{ __('Delete') }}"
                                     >
                                         <x-icon name="trash" class="h-3.5 w-3.5"/>
@@ -322,7 +395,7 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
         @endif
     </div>
 
-    {{-- Create / Edit Modal --}}
+    {{-- 1. Create / Edit Modal --}}
     <x-ui.modal name="permission-form-modal" max-width="max-w-md" :title="$editingPermissionId ? __('Edit Permission') : __('Create Dynamic Permission')" :description="__('Unique authorization capability key.')">
         <form wire:submit="save" class="space-y-4">
             <x-ui.input wire:model="form.name" :label="__('Permission Key (e.g. reports.export_financial)') .' *'" required :error="$errors->first('form.name')"/>
@@ -353,7 +426,52 @@ new #[Layout('layouts.app')] #[Title('Permissions Management')] class extends Co
         </form>
     </x-ui.modal>
 
-    {{-- Delete Modal --}}
+    {{-- 2. Assign Permission to Roles Modal --}}
+    @if ($this->activeAssignPermission)
+        <x-ui.modal name="permission-assign-roles-modal" max-width="max-w-lg" :title="__('Assign Permission to Roles')" :description="__('Toggle which roles are granted the \':perm\' capability.', ['perm' => $this->activeAssignPermission->name])">
+            <div class="space-y-4">
+                <div class="p-3 rounded-xl border border-border bg-secondary/30 text-xs">
+                    <p class="font-bold text-foreground">{{ $this->activeAssignPermission->name }}</p>
+                    <p class="text-muted-foreground mt-0.5">{{ $this->activeAssignPermission->description ?: __('Module:') . ' ' . $this->activeAssignPermission->module }}</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-foreground mb-2">{{ __('Select Roles Granted This Permission:') }}</label>
+                    <div class="max-h-64 overflow-y-auto space-y-1.5 p-2 rounded-xl border border-border bg-background">
+                        @foreach ($this->allRoles as $role)
+                            <label class="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer select-none">
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        wire:model="assignedRoleIds"
+                                        value="{{ $role->id }}"
+                                        @disabled($role->name === 'Super Administrator')
+                                        class="rounded border-border text-primary"
+                                    />
+                                    <span class="text-xs font-semibold text-foreground">{{ $role->name }}</span>
+                                    @if ($role->is_system)
+                                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground uppercase font-bold">{{ __('System') }}</span>
+                                    @endif
+                                </div>
+                                <span class="text-[10px] text-muted-foreground">{{ $role->users_count ?? $role->users()->count() }} {{ __('users') }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-border">
+                    <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('permission-assign-roles-modal')">
+                        {{ __('Cancel') }}
+                    </x-ui.button>
+                    <x-ui.button wire:click="saveAssignedRoles" variant="default" icon="check">
+                        {{ __('Save Role Assignments') }}
+                    </x-ui.button>
+                </div>
+            </div>
+        </x-ui.modal>
+    @endif
+
+    {{-- 3. Delete Modal --}}
     <x-ui.modal name="permission-delete-modal" max-width="max-w-sm" :title="__('Delete Permission Key')" :description="__('Are you sure? Removing this permission key will unassign it from all roles.')">
         <div class="flex justify-end gap-2 pt-2">
             <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('permission-delete-modal')">{{ __('Cancel') }}</x-ui.button>

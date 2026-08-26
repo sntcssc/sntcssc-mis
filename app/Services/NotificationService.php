@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\RealtimeNotificationEvent;
 use App\Models\AppNotification;
+use App\Models\ChatMeeting;
 use App\Models\Setting;
 use App\Models\Ticket;
 use App\Models\User;
@@ -20,6 +21,31 @@ class NotificationService
         protected EmailService $emailService,
         protected SmsService $smsService
     ) {}
+
+    /**
+     * Send an internal in-app notification.
+     */
+    public function sendInternal(
+        User|int $user,
+        string $type,
+        string $title,
+        string $body,
+        ?string $actionUrl = null,
+        ?string $actionLabel = null
+    ): ?AppNotification {
+        return $this->send(
+            user: $user,
+            title: $title,
+            message: $body,
+            category: AppNotification::CATEGORY_SYSTEM,
+            options: [
+                'type' => $type,
+                'action_url' => $actionUrl,
+                'action_label' => $actionLabel,
+                'channels' => ['database'],
+            ]
+        );
+    }
 
     /**
      * Send an enterprise multi-channel notification to a single user.
@@ -503,5 +529,36 @@ class NotificationService
         }
 
         return $query->get();
+    }
+
+    /**
+     * Notify an invitee about an online meeting.
+     */
+    public function notifyMeetingInvite(User $recipient, User $host, ChatMeeting $meeting): ?AppNotification
+    {
+        return $this->send(
+            user: $recipient,
+            title: __('Meeting Invitation: :title', ['title' => $meeting->title]),
+            message: __(':name has invited you to a :mode meeting scheduled for :time.', [
+                'name' => $host->name,
+                'mode' => $meeting->mode,
+                'time' => $meeting->formattedScheduledAt(),
+            ]),
+            category: AppNotification::CATEGORY_SYSTEM,
+            options: [
+                'type' => 'meeting_invite',
+                'action_url' => $meeting->join_url,
+                'action_label' => __('Join Meeting'),
+                'icon' => $meeting->isVideo() ? 'video' : 'phone',
+                'color' => 'blue',
+                'channels' => [AppNotification::CHANNEL_DATABASE],
+                'metadata' => [
+                    'meeting_id' => $meeting->id,
+                    'meeting_uuid' => $meeting->uuid,
+                    'host_id' => $host->id,
+                ],
+                'created_by' => $host->id,
+            ]
+        );
     }
 }

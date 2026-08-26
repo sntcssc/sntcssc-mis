@@ -21,6 +21,9 @@ new #[Layout('layouts.app')] #[Title('Roles & Permissions Management')] class ex
     #[Url(as: 'q')]
     public string $search = '';
 
+    public string $permissionSearch = '';
+    public string $selectedModuleFilter = 'all';
+
     public ?int $activeRoleId = null;
 
     // Role Form (Create / Edit)
@@ -74,9 +77,26 @@ new #[Layout('layouts.app')] #[Title('Roles & Permissions Management')] class ex
     }
 
     #[Computed]
+    public function allModules()
+    {
+        return Permission::query()->distinct()->pluck('module')->sort()->values();
+    }
+
+    #[Computed]
     public function permissionModules()
     {
         return Permission::query()
+            ->when(! empty(trim($this->permissionSearch)), function ($query) {
+                $term = trim($this->permissionSearch);
+                $query->where(function ($q) use ($term) {
+                    $q->where('name', 'like', "%{$term}%")
+                        ->orWhere('description', 'like', "%{$term}%")
+                        ->orWhere('module', 'like', "%{$term}%");
+                });
+            })
+            ->when($this->selectedModuleFilter !== 'all' && ! empty($this->selectedModuleFilter), function ($query) {
+                $query->where('module', $this->selectedModuleFilter);
+            })
             ->orderBy('module')
             ->orderBy('name')
             ->get()
@@ -469,6 +489,40 @@ new #[Layout('layouts.app')] #[Title('Roles & Permissions Management')] class ex
                             <x-icon name="x" class="h-3.5 w-3.5"/>
                             {{ __('Revoke All') }}
                         </x-ui.button>
+                    </div>
+                </div>
+
+                {{-- Permission Search & Module Filter Toolbar --}}
+                <div class="flex flex-col sm:flex-row items-center gap-2.5 p-3 rounded-xl border border-border bg-card shadow-xs">
+                    <div class="relative flex-1 w-full">
+                        <x-icon name="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none"/>
+                        <input
+                            type="text"
+                            wire:model.live.debounce.250ms="permissionSearch"
+                            placeholder="{{ __('Search permissions by key name, module, or description…') }}"
+                            class="h-8 w-full rounded-lg border border-input bg-background/50 pl-8 pr-8 text-xs shadow-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                        @if ($permissionSearch)
+                            <button
+                                type="button"
+                                wire:click="$set('permissionSearch', '')"
+                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                            >
+                                <x-icon name="x" class="h-3 w-3"/>
+                            </button>
+                        @endif
+                    </div>
+
+                    <div class="w-full sm:w-auto shrink-0">
+                        <select
+                            wire:model.live="selectedModuleFilter"
+                            class="h-8 w-full sm:w-48 rounded-lg border border-input bg-card px-2.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        >
+                            <option value="all">{{ __('All Modules') }} ({{ $this->allModules->count() }})</option>
+                            @foreach ($this->allModules as $mod)
+                                <option value="{{ $mod }}">{{ $mod }}</option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
 
