@@ -68,6 +68,9 @@ Route::prefix('{current_team}')
         Route::livewire('tickets/create', 'pages::portal.tickets.create')->name('tickets.create');
         Route::livewire('tickets/{ticket}', 'pages::portal.tickets.show')->name('tickets.show');
 
+        // User Notification Center & Inbox
+        Route::livewire('notifications', 'pages::portal.notifications')->name('notifications.index');
+
         // Admin Helpdesk Desk & Ticket Management
         Route::livewire('support/tickets', 'pages::admin.tickets')->name('admin.tickets.index')->middleware('can:tickets.view');
         Route::livewire('support/tickets/{ticket}', 'pages::admin.tickets.show')->name('admin.tickets.show')->middleware('can:tickets.view');
@@ -82,8 +85,10 @@ Route::prefix('{current_team}')
         Route::livewire('system/settings/localization', 'pages::admin.settings.localization')->name('admin.settings.localization')->middleware('can:settings.localization');
         Route::livewire('system/settings/payment', 'pages::admin.settings.payment')->name('admin.settings.payment')->middleware('can:settings.payment');
         Route::livewire('system/settings/sms', 'pages::admin.settings.sms')->name('admin.settings.sms')->middleware('can:settings.sms');
+        Route::livewire('system/settings/notification', 'pages::admin.settings.notification')->name('admin.settings.notification')->middleware('can:settings.general');
         Route::livewire('system/settings/system', 'pages::admin.settings.system')->name('admin.settings.system')->middleware('can:settings.general');
         Route::livewire('system/settings/backup', 'pages::admin.settings.backup')->name('admin.settings.backup')->middleware('can:settings.backup');
+
         Route::livewire('system/backups', 'pages::admin.settings.backup')->name('admin.backups.index')->middleware('can:settings.backup');
         Route::livewire('communications/logs', 'pages::admin.communications.logs')->name('admin.communications.logs')->middleware('can:communications.view');
         Route::livewire('communications/compose', 'pages::admin.communications.compose')->name('admin.communications.compose')->middleware('can:communications.send');

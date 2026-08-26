@@ -2,12 +2,17 @@
 
 namespace App\Listeners;
 
+use App\Models\AppNotification;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\AuditLogService;
+use App\Services\NotificationService;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Events\Dispatcher;
 
 class LogAuthenticationEvents
@@ -18,6 +23,34 @@ class LogAuthenticationEvents
 
         if ($user instanceof User) {
             $user->recordLogin();
+
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+                $ip = request()->ip() ?? '127.0.0.1';
+                $time = now()->format('d M Y, h:i A');
+
+                $notificationService->send(
+                    user: $user,
+                    title: __('Security Alert: New Sign-in Detected'),
+                    message: __('New login detected from IP :ip on :time.', [
+                        'ip' => $ip,
+                        'time' => $time,
+                    ]),
+                    category: AppNotification::CATEGORY_SECURITY,
+                    options: [
+                        'type' => 'security_login',
+                        'icon' => 'shield-check',
+                        'metadata' => [
+                            'ip_address' => $ip,
+                            'timestamp' => $time,
+                            'guard' => $event->guard ?? 'web',
+                        ],
+                    ]
+                );
+            } catch (\Throwable) {
+                // Keep login flow robust
+            }
         }
 
         AuditLogService::log(
@@ -52,6 +85,31 @@ class LogAuthenticationEvents
 
         if ($user instanceof User) {
             $user->recordFailedLogin();
+
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+                $ip = request()->ip() ?? '127.0.0.1';
+
+                $notificationService->send(
+                    user: $user,
+                    title: __('Security Alert: Failed Sign-in Attempt'),
+                    message: __('A failed login attempt was detected for your account from IP :ip. If this was not you, please secure your account immediately.', [
+                        'ip' => $ip,
+                    ]),
+                    category: AppNotification::CATEGORY_SECURITY,
+                    options: [
+                        'type' => 'security_failed_login',
+                        'icon' => 'shield-alert',
+                        'metadata' => [
+                            'ip_address' => $ip,
+                            'time' => now()->format('d M Y, h:i A'),
+                        ],
+                    ]
+                );
+            } catch (\Throwable) {
+                // Keep auth flow robust
+            }
         }
 
         AuditLogService::log(
@@ -68,6 +126,31 @@ class LogAuthenticationEvents
 
         if ($user instanceof User) {
             $user->unlockAccount();
+
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+                $time = now()->format('d M Y, h:i A');
+
+                $notificationService->send(
+                    user: $user,
+                    title: __('Security Alert: Password Changed'),
+                    message: __('Your account password was successfully reset on :time. If you did not make this change, please contact support immediately.', [
+                        'time' => $time,
+                    ]),
+                    category: AppNotification::CATEGORY_SECURITY,
+                    options: [
+                        'type' => 'security_password_reset',
+                        'icon' => 'shield-alert',
+                        'metadata' => [
+                            'time' => $time,
+                            'ip_address' => request()->ip() ?? '127.0.0.1',
+                        ],
+                    ]
+                );
+            } catch (\Throwable) {
+                // Keep reset flow robust
+            }
         }
 
         AuditLogService::log(
@@ -76,6 +159,78 @@ class LogAuthenticationEvents
             auditable: $user,
             userId: $user->getAuthIdentifier()
         );
+    }
+
+    public function handleRegistered(Registered $event): void
+    {
+        $user = $event->user;
+
+        if ($user instanceof User) {
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+
+                $notificationService->send(
+                    user: $user,
+                    title: __('Welcome to :app!', ['app' => Setting::appName()]),
+                    message: __('Hello :name, your account has been registered successfully. Welcome to our portal!', [
+                        'name' => $user->name,
+                    ]),
+                    category: AppNotification::CATEGORY_SYSTEM,
+                    options: [
+                        'type' => 'account_welcome',
+                        'icon' => 'user-check',
+                        'metadata' => [
+                            'registered_at' => now()->format('d M Y, h:i A'),
+                            'email' => $user->email,
+                        ],
+                    ]
+                );
+            } catch (\Throwable) {
+                // Keep registration flow robust
+            }
+
+            AuditLogService::log(
+                event: 'user_registered',
+                description: "New user registered: {$user->name} ({$user->email}).",
+                auditable: $user,
+                userId: $user->getAuthIdentifier()
+            );
+        }
+    }
+
+    public function handleVerified(Verified $event): void
+    {
+        $user = $event->user;
+
+        if ($user instanceof User) {
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+
+                $notificationService->send(
+                    user: $user,
+                    title: __('Security Alert: Email Verified'),
+                    message: __('Your email address :email was successfully verified.', [
+                        'email' => $user->email,
+                    ]),
+                    category: AppNotification::CATEGORY_SECURITY,
+                    options: [
+                        'type' => 'email_verified',
+                        'icon' => 'shield-check',
+                    ]
+                );
+            } catch (\Throwable) {
+                // Keep verification flow robust
+            }
+
+            AuditLogService::log(
+                event: 'email_verified',
+                description: "Email verified for user: {$user->name} ({$user->email}).",
+                auditable: $user,
+                userId: $user->getAuthIdentifier()
+            );
+        }
     }
 
     /**
@@ -88,6 +243,8 @@ class LogAuthenticationEvents
             Logout::class => 'handleLogout',
             Failed::class => 'handleFailed',
             PasswordReset::class => 'handlePasswordReset',
+            Registered::class => 'handleRegistered',
+            Verified::class => 'handleVerified',
         ];
     }
 }

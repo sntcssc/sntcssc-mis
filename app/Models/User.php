@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -199,6 +200,24 @@ class User extends Authenticatable implements PasskeyUser
     public function deletedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'deleted_by');
+    }
+
+    /**
+     * Internal App Notifications relationship.
+     *
+     * @return HasMany<AppNotification>
+     */
+    public function appNotifications(): HasMany
+    {
+        return $this->hasMany(AppNotification::class, 'user_id');
+    }
+
+    /**
+     * Count unread app notifications.
+     */
+    public function unreadAppNotificationsCount(): int
+    {
+        return $this->appNotifications()->unread()->count();
     }
 
     /**

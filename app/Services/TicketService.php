@@ -16,7 +16,8 @@ class TicketService
 {
     public function __construct(
         protected EmailService $emailService,
-        protected SmsService $smsService
+        protected SmsService $smsService,
+        protected NotificationService $notificationService
     ) {}
 
     /**
@@ -556,7 +557,33 @@ class TicketService
             'app_name' => Setting::appName(),
         ];
 
-        // 1. Email to user
+        // 1. Realtime In-App Notification to User
+        if ($ticket->user) {
+            $this->notificationService->notifyTicket(
+                ticket: $ticket,
+                eventType: 'created',
+                title: __('Ticket #:number Created', ['number' => $ticket->ticket_number]),
+                message: __('Your support ticket ":subject" has been registered.', ['subject' => $ticket->subject]),
+                targetUser: $ticket->user
+            );
+        }
+
+        // 2. Realtime In-App Notification to Assigned Staff
+        if ($ticket->assignedTo) {
+            $this->notificationService->notifyTicket(
+                ticket: $ticket,
+                eventType: 'assigned',
+                title: __('New Ticket Assigned: #:number', ['number' => $ticket->ticket_number]),
+                message: __('You have been assigned to ticket ":subject" (:category, :priority).', [
+                    'subject' => $ticket->subject,
+                    'category' => $ticket->category?->name ?? 'General',
+                    'priority' => $ticket->priorityLabel(),
+                ]),
+                targetUser: $ticket->assignedTo
+            );
+        }
+
+        // 3. Email to user
         if ($ticket->submitterEmail() && EmailService::isEnabled()) {
             $this->emailService->sendTemplate(
                 email: $ticket->submitterEmail(),
@@ -565,7 +592,7 @@ class TicketService
             );
         }
 
-        // 2. SMS to user
+        // 4. SMS to user
         if ($ticket->guest_phone && SmsService::isEnabled()) {
             $this->smsService->sendTemplate(
                 phone: $ticket->guest_phone,
@@ -574,7 +601,7 @@ class TicketService
             );
         }
 
-        // 3. Email to staff / assignee
+        // 5. Email to staff / assignee
         $staffEmail = $ticket->assignedTo?->email ?: (string) Setting::get('backup.notification_email', config('mail.from.address'));
         if ($staffEmail && EmailService::isEnabled()) {
             $staffVars = array_merge($vars, [
@@ -598,7 +625,17 @@ class TicketService
         $isStaff = $sender && ($sender->hasRole('Super Administrator') || $sender->hasRole('Administrator') || $sender->can('tickets.reply'));
 
         if ($isStaff) {
-            // Staff replied -> notify user
+            // Staff replied -> notify user in real-time
+            if ($ticket->user) {
+                $this->notificationService->notifyTicket(
+                    ticket: $ticket,
+                    eventType: 'replied',
+                    title: __('Support Staff Replied on Ticket #:number', ['number' => $ticket->ticket_number]),
+                    message: Str::limit(strip_tags($message->message), 140),
+                    targetUser: $ticket->user
+                );
+            }
+
             if ($ticket->submitterEmail() && EmailService::isEnabled()) {
                 $this->emailService->sendTemplate(
                     email: $ticket->submitterEmail(),
@@ -615,7 +652,17 @@ class TicketService
                 );
             }
         } else {
-            // User replied -> notify staff / assignee
+            // User replied -> notify staff / assignee in real-time
+            if ($ticket->assignedTo) {
+                $this->notificationService->notifyTicket(
+                    ticket: $ticket,
+                    eventType: 'replied_by_user',
+                    title: __('User Replied on Ticket #:number', ['number' => $ticket->ticket_number]),
+                    message: Str::limit(strip_tags($message->message), 140),
+                    targetUser: $ticket->assignedTo
+                );
+            }
+
             $staffEmail = $ticket->assignedTo?->email ?: (string) Setting::get('backup.notification_email', config('mail.from.address'));
             if ($staffEmail && EmailService::isEnabled()) {
                 $this->emailService->sendTemplate(
@@ -640,6 +687,23 @@ class TicketService
      */
     protected function notifyStatusChanged(Ticket $ticket, string $oldStatus, string $newStatus): void
     {
+        // Realtime In-App Notification
+        if ($ticket->user) {
+            $this->notificationService->notifyTicket(
+                ticket: $ticket,
+                eventType: 'status_changed',
+                title: __('Ticket #:number Status: :status', [
+                    'number' => $ticket->ticket_number,
+                    'status' => ucfirst(str_replace('_', ' ', $newStatus)),
+                ]),
+                message: __('Your ticket status was changed from :old to :new.', [
+                    'old' => ucfirst(str_replace('_', ' ', $oldStatus)),
+                    'new' => ucfirst(str_replace('_', ' ', $newStatus)),
+                ]),
+                targetUser: $ticket->user
+            );
+        }
+
         if ($ticket->submitterEmail() && EmailService::isEnabled()) {
             $this->emailService->sendTemplate(
                 email: $ticket->submitterEmail(),
@@ -662,6 +726,24 @@ class TicketService
      */
     protected function notifySlaWarning(Ticket $ticket, string $type): void
     {
+        // Realtime alert to assigned staff
+        if ($ticket->assignedTo) {
+            $this->notificationService->notifyTicket(
+                ticket: $ticket,
+                eventType: 'sla_warning',
+                title: __('SLA Warning: Ticket #:number', ['number' => $ticket->ticket_number]),
+                message: __('Ticket #:number has reached its :type deadline.', [
+                    'number' => $ticket->ticket_number,
+                    'type' => $type === 'response' ? 'first response' : 'resolution',
+                ]),
+                targetUser: $ticket->assignedTo,
+                extra: [
+                    'color' => 'text-rose-500 bg-rose-500/10 border-rose-500/20',
+                    'icon' => 'alert-triangle',
+                ]
+            );
+        }
+
         $staffEmail = $ticket->assignedTo?->email ?: (string) Setting::get('backup.notification_email', config('mail.from.address'));
         if ($staffEmail && EmailService::isEnabled()) {
             $this->emailService->sendTemplate(

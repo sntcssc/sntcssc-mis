@@ -90,34 +90,9 @@
         {{-- Theme switcher: light / dark / system --}}
         <x-ui.theme-switch/>
 
-        {{-- Notifications --}}
-        <x-ui.dropdown width="w-80" offset="mt-1">
-            <x-slot:trigger>
-                <button type="button" class="relative flex h-9 w-9 items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer" aria-label="{{ __('Notifications') }}">
-                    <x-icon name="bell" class="h-4 w-4"/>
-                    <span class="absolute -top-0.5 -right-0.5 h-4 w-4 flex items-center justify-center rounded-full bg-emerald-500 text-[10px] font-semibold text-white">
-                        3
-                    </span>
-                </button>
-            </x-slot:trigger>
+        {{-- Realtime Interactive Notifications Bell & Drawer --}}
+        <livewire:notification-bell />
 
-            <x-ui.dropdown.label>{{ __('Notifications') }}</x-ui.dropdown.label>
-            <x-ui.dropdown.separator/>
-            <div class="flex flex-col gap-1">
-                <div class="flex flex-col gap-1 rounded-md px-2 py-1.5 hover:bg-secondary cursor-pointer">
-                    <span class="text-sm font-medium">{{ __('New admission received') }}</span>
-                    <span class="text-xs text-muted-foreground">{{ __('Application #1247 submitted today') }}</span>
-                </div>
-                <div class="flex flex-col gap-1 rounded-md px-2 py-1.5 hover:bg-secondary cursor-pointer">
-                    <span class="text-sm font-medium">{{ __('Batch starting soon') }}</span>
-                    <span class="text-xs text-muted-foreground">{{ __('Prelims crash course starts in 3 days') }}</span>
-                </div>
-                <div class="flex flex-col gap-1 rounded-md px-2 py-1.5 hover:bg-secondary cursor-pointer">
-                    <span class="text-sm font-medium">{{ __('Fee payment reminder') }}</span>
-                    <span class="text-xs text-muted-foreground">{{ __('2 installments due this week') }}</span>
-                </div>
-            </div>
-        </x-ui.dropdown>
 
         {{-- User menu --}}
         <x-ui.dropdown width="w-64" offset="mt-1">

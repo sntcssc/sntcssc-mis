@@ -44,6 +44,11 @@
             'icon' => 'smartphone',
             'route' => 'admin.settings.sms',
         ],
+        'notification' => [
+            'label' => __('Realtime & Notifications'),
+            'icon' => 'bell',
+            'route' => 'admin.settings.notification',
+        ],
         'system' => [
             'label' => __('System'),
             'icon' => 'cpu',
@@ -55,6 +60,7 @@
             'route' => 'admin.settings.backup',
         ],
     ];
+
 @endphp
 
 <div class="border-b border-border mb-6 w-full">
