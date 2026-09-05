@@ -71,8 +71,8 @@ require __DIR__.'/settings.php';
 // Public & Direct Chat & Meeting Join via Invite Code
 Route::get('live-chat/join/{code}', [ChatJoinController::class, 'join'])->name('chat.join')->middleware(['auth']);
 Route::get('meetings/join/{code}', [MeetingJoinController::class, 'join'])->name('meetings.join')->middleware(['auth']);
-Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal.direct')->middleware(['auth']);
-Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync.direct')->middleware(['auth']);
+Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal.direct')->middleware(['auth', 'throttle:240,1']);
+Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync.direct')->middleware(['auth', 'throttle:240,1']);
 
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
@@ -103,8 +103,8 @@ Route::prefix('{current_team}')
         // Dedicated Online Meetings & Video Conferencing
         Route::livewire('meetings', 'pages::portal.meetings')->name('meetings.index');
         Route::livewire('meetings/room/{uuid}', 'pages::portal.meeting-room')->name('meetings.room');
-        Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal');
-        Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync');
+        Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal')->middleware('throttle:240,1');
+        Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync')->middleware('throttle:240,1');
 
         // Admin Helpdesk Desk & Ticket Management
         Route::livewire('support/tickets', 'pages::admin.tickets')->name('admin.tickets.index')->middleware('can:tickets.view');

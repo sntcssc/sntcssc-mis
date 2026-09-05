@@ -213,15 +213,49 @@ async function addSafeIceCandidate(pc, candidate) {
 }
 
 /**
+ * Deterministically find the transceiver for kind ('audio' or 'video').
+ *
+ * Prefer ASSOCIATED transceivers (mid !== null): when a peer connection is created
+ * from an early ICE-candidate event, transceivers are pre-created before the remote
+ * offer arrives, and index-based selection can pick a dangling (unassociated)
+ * transceiver. A local track attached to a dangling transceiver is never transmitted
+ * — the negotiated m-line then stays effectively receive-only, producing one-way
+ * audio/video in calls. The index fallback only applies in the pre-offer state.
+ */
+function getCallTransceiverByKind(pc, kind) {
+    if (!pc || typeof pc.getTransceivers !== 'function') return null;
+    const list = pc.getTransceivers();
+
+    // 1. Already sending this kind on an associated transceiver.
+    const sending = list.find((t) => t.mid !== null && t.sender?.track?.kind === kind);
+    if (sending) return sending;
+
+    // 2. Associated with a negotiated m-line of this kind.
+    const associated = list.find((t) => t.mid !== null && t.receiver?.track?.kind === kind);
+    if (associated) return associated;
+
+    // 3. Pre-offer: local track was added via addTransceiver(track) but not yet negotiated.
+    const preOffer = list.find((t) => t.mid === null && (t.sender?.track?.kind === kind || t.receiver?.track?.kind === kind));
+    if (preOffer) return preOffer;
+
+    // 4. Pre-offer transceivers created empty, in deterministic mid order.
+    const fallbackMid = kind === 'audio' ? '0' : '1';
+    const byMid = list.find((t) => t.mid === fallbackMid);
+    if (byMid) return byMid;
+
+    const idx = kind === 'audio' ? 0 : 1;
+    return list[idx] || null;
+}
+
+/**
  * Ensures deterministic RTCPeerConnection transceivers (Audio = Index 0, Video = Index 1).
  * This permanently eliminates RFC 8829 m-line ordering mismatch errors (InvalidAccessError)
  * and guarantees proper media stream association.
  */
 function ensureDeterministicTransceivers(pc, stream = null) {
     if (!pc || typeof pc.getTransceivers !== 'function') return { audio: null, video: null };
-    let transceivers = pc.getTransceivers();
-    let audioTransceiver = transceivers.find((t, idx) => (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') || (t.sender && t.sender.track && t.sender.track.kind === 'audio') || t.mid === '0' || idx === 0);
-    let videoTransceiver = transceivers.find((t, idx) => (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') || (t.sender && t.sender.track && t.sender.track.kind === 'video') || t.mid === '1' || idx === 1);
+    let audioTransceiver = getCallTransceiverByKind(pc, 'audio');
+    let videoTransceiver = getCallTransceiverByKind(pc, 'video');
 
     const audioTrack = stream ? stream.getAudioTracks()[0] : null;
     const videoTrack = stream ? stream.getVideoTracks()[0] : null;
@@ -236,7 +270,7 @@ function ensureDeterministicTransceivers(pc, stream = null) {
         }
     } else {
         if (audioTrack && audioTransceiver.sender) {
-            try { audioTransceiver.sender.replaceTrack(audioTrack); } catch (e) {}
+            try { audioTransceiver.sender.replaceTrack(audioTrack).catch(() => {}); } catch (e) {}
         }
         try { audioTransceiver.direction = 'sendrecv'; } catch (e) {}
     }
@@ -251,7 +285,7 @@ function ensureDeterministicTransceivers(pc, stream = null) {
         }
     } else {
         if (videoTrack && videoTransceiver.sender) {
-            try { videoTransceiver.sender.replaceTrack(videoTrack); } catch (e) {}
+            try { videoTransceiver.sender.replaceTrack(videoTrack).catch(() => {}); } catch (e) {}
         }
         try { videoTransceiver.direction = 'sendrecv'; } catch (e) {}
     }
@@ -1622,11 +1656,79 @@ export function chatCallOverlayAlpine(config = {}) {
                     return;
                 }
                 await peer.pc.setLocalDescription(offer);
+                peer._lastOfferAttempt = Date.now();
                 this.sendDirectSignal('offer', { sdp: peer.pc.localDescription || offer }, id);
             } catch (e) {
                 console.warn(`Error creating group offer for peer ${id}:`, e);
             } finally {
                 if (peer) peer.makingOffer = false;
+            }
+        },
+
+        /**
+         * Periodic self-healing for call peer connections. Mirrors the meeting room's
+         * recovery: peer connections stuck in new/connecting (lost answer, dead remote)
+         * are recycled and renegotiated, and 1-on-1 calls whose answer never arrives
+         * get their offer re-transmitted instead of stalling silently.
+         */
+        startCallWatchdog() {
+            if (this._callWatchdogTimer) return;
+            this._callWatchdogTimer = setInterval(() => {
+                if (this.callStatus === 'idle' || this.callStatus === 'ended') return;
+                const nowMs = Date.now();
+                try {
+                    if (this.isGroup) {
+                        Object.values(this.peers).forEach((peer) => {
+                            if (!peer || !peer.pc) return;
+                            const state = peer.pc.connectionState;
+                            const iceState = peer.pc.iceConnectionState;
+
+                            if (state === 'connected' || state === 'completed') return;
+
+                            const isFailed = state === 'failed' || iceState === 'failed';
+                            const isConnecting = state === 'new' || state === 'connecting';
+                            if (!isFailed && !isConnecting) return;
+
+                            const connectingFor = peer._connectingSince
+                                ? nowMs - peer._connectingSince
+                                : (peer._connectingSince = nowMs, 0);
+                            if (!isFailed && connectingFor < 20000) return;
+
+                            const lastAttempt = peer._lastOfferAttempt || 0;
+                            if ((nowMs - lastAttempt) < 3000) return;
+                            peer._lastOfferAttempt = nowMs;
+
+                            // Recycle and renegotiate from the lower user id only.
+                            const myId = Number(this.currentUserId);
+                            if (myId && myId < Number(peer.userId)) {
+                                try { peer.pc.close(); } catch (e) {}
+                                delete this.peers[peer.userId];
+                                this.initiateGroupPeerOffer(peer.userId);
+                            } else {
+                                this.sendDirectSignal('peer_presence', { userId: this.currentUserId }, peer.userId);
+                            }
+                        });
+                    } else if (this.peerConnection) {
+                        const state = this.peerConnection.connectionState;
+                        if (state === 'connected' || state === 'completed') return;
+                        if (this.peerConnection.signalingState === 'have-local-offer' && this.peerConnection.localDescription) {
+                            const offerAge = nowMs - (this._lastOfferSentAt || 0);
+                            if (offerAge > 8000) {
+                                this._lastOfferSentAt = nowMs;
+                                this.sendDirectSignal('offer', { sdp: this.peerConnection.localDescription }, this.peerUserId);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Call watchdog notice:', e);
+                }
+            }, 4000);
+        },
+
+        stopCallWatchdog() {
+            if (this._callWatchdogTimer) {
+                clearInterval(this._callWatchdogTimer);
+                this._callWatchdogTimer = null;
             }
         },
 
@@ -1835,6 +1937,7 @@ export function chatCallOverlayAlpine(config = {}) {
                             const offer = await this.peerConnection.createOffer();
                             if (this.peerConnection.signalingState === 'stable') {
                                 await this.peerConnection.setLocalDescription(offer);
+                                this._lastOfferSentAt = Date.now();
                                 this.sendDirectSignal('offer', { sdp: this.peerConnection.localDescription || offer }, fromUserId);
                             }
                         } catch (err) {
@@ -1949,6 +2052,7 @@ export function chatCallOverlayAlpine(config = {}) {
                             const offer = await this.peerConnection.createOffer();
                             if (this.peerConnection.signalingState === 'stable') {
                                 await this.peerConnection.setLocalDescription(offer);
+                                this._lastOfferSentAt = Date.now();
                                 this.sendDirectSignal('offer', { sdp: this.peerConnection.localDescription || offer }, fromUserId);
                             }
                         } catch (e) {
@@ -1975,6 +2079,11 @@ export function chatCallOverlayAlpine(config = {}) {
                     peer.ignoreOffer = !isPolite && offerCollision;
                     if (peer.ignoreOffer) {
                         console.debug(`Group offer collision for peer ${fromUserId}: impolite peer ignoring offer`);
+                        // Ensure the other side still receives our offer, otherwise both
+                        // sides can end up waiting for each other with no media flowing.
+                        if (peer.pc.localDescription) {
+                            this.sendDirectSignal('offer', { sdp: peer.pc.localDescription }, fromUserId);
+                        }
                         return;
                     }
 
@@ -2427,6 +2536,7 @@ export function chatCallOverlayAlpine(config = {}) {
                         const offer = await this.peerConnection.createOffer();
                         if (this.peerConnection.signalingState === 'stable') {
                             await this.peerConnection.setLocalDescription(offer);
+                            this._lastOfferSentAt = Date.now();
                             this.sendDirectSignal('offer', { sdp: this.peerConnection.localDescription || offer });
                         }
                     } catch (err) {
@@ -2435,6 +2545,8 @@ export function chatCallOverlayAlpine(config = {}) {
                         this.makingOffer = false;
                     }
                 }
+
+                this.startCallWatchdog();
             } catch (err) {
                 console.error('WebRTC Media Device Access Error:', err);
             }
@@ -2912,6 +3024,7 @@ export function chatCallOverlayAlpine(config = {}) {
 
         cleanupWebRtc() {
             this.stopRingtone();
+            this.stopCallWatchdog();
             if (this.timerInterval) {
                 clearInterval(this.timerInterval);
                 this.timerInterval = null;

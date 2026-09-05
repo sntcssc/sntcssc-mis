@@ -4,10 +4,12 @@ use App\Http\Middleware\CheckMaintenanceMode;
 use App\Http\Middleware\EnsurePhoneAndEmailVerified;
 use App\Http\Middleware\SetAppLocale;
 use App\Http\Middleware\SetTeamUrlDefaults;
+use App\Http\Middleware\TrimStrings as AppTrimStrings;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\TrimStrings as FrameworkTrimStrings;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -20,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Preserve trailing CRLF in WebRTC SDP payloads (see App\Http\Middleware\TrimStrings).
+        $middleware->replace(FrameworkTrimStrings::class, AppTrimStrings::class);
+
         $middleware->web(append: [
             CheckMaintenanceMode::class,
             SetAppLocale::class,
@@ -30,11 +35,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'verified' => EnsurePhoneAndEmailVerified::class,
         ]);
 
-        // Signal & sync are JSON XHR endpoints authenticated via session + controller guard.
-        // Exempting from CSRF prevents 419 → apparent 404 when the browser omits the session cookie.
+        // Meeting sync polling is a JSON XHR authenticated via session + controller guard.
+        // Signal POSTs keep CSRF protection: the client always sends the X-CSRF-TOKEN header.
         $middleware->validateCsrfTokens(except: [
-            'meetings/*/signal',
-            '*/meetings/*/signal',
             'meetings/*/sync',
             '*/meetings/*/sync',
         ]);

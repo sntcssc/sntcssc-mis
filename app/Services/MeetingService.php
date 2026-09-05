@@ -645,7 +645,7 @@ class MeetingService
                     senderUserId: $user->id
                 ));
             } catch (\Throwable $e) {
-                Log::debug('MeetingRealtimeEvent join broadcast fallback: '.$e->getMessage());
+                Log::warning('MeetingRealtimeEvent join broadcast failed: '.$e->getMessage());
             }
 
             AuditLogService::log(
@@ -691,7 +691,7 @@ class MeetingService
                         senderUserId: $actor->id
                     ));
                 } catch (\Throwable $e) {
-                    Log::debug('MeetingRealtimeEvent admit broadcast fallback: '.$e->getMessage());
+                    Log::warning('MeetingRealtimeEvent admit broadcast failed: '.$e->getMessage());
                 }
 
                 AuditLogService::log(
@@ -738,7 +738,7 @@ class MeetingService
                         senderUserId: $actor->id
                     ));
                 } catch (\Throwable $e) {
-                    Log::debug('MeetingRealtimeEvent deny broadcast fallback: '.$e->getMessage());
+                    Log::warning('MeetingRealtimeEvent deny broadcast failed: '.$e->getMessage());
                 }
 
                 AuditLogService::log(
@@ -783,7 +783,7 @@ class MeetingService
                         senderUserId: $actor->id
                     ));
                 } catch (\Throwable $e) {
-                    Log::debug('MeetingRealtimeEvent role broadcast fallback: '.$e->getMessage());
+                    Log::warning('MeetingRealtimeEvent role broadcast failed: '.$e->getMessage());
                 }
 
                 AuditLogService::log(
@@ -828,7 +828,7 @@ class MeetingService
                     senderUserId: $actor->id
                 ));
             } catch (\Throwable $e) {
-                Log::debug('MeetingRealtimeEvent restrictions broadcast fallback: '.$e->getMessage());
+                Log::warning('MeetingRealtimeEvent restrictions broadcast failed: '.$e->getMessage());
             }
 
             AuditLogService::log(
@@ -876,7 +876,7 @@ class MeetingService
                     senderUserId: $actor->id
                 ));
             } catch (\Throwable $e) {
-                Log::debug('MeetingRealtimeEvent end broadcast fallback: '.$e->getMessage());
+                Log::warning('MeetingRealtimeEvent end broadcast failed: '.$e->getMessage());
             }
 
             AuditLogService::log(
@@ -962,36 +962,37 @@ class MeetingService
         ?int $targetUserId = null
     ): bool {
         $signalId = $payload['signal_id'] ?? $payload['id'] ?? ('sig_'.(string) Str::uuid());
-        $payloadWithId = array_merge($payload, [
+
+        // Wire format consumed by meeting.js: signalType/fromUserId/targetUserId at the
+        // top level and the original signal (sdp/candidates/etc.) under "payload". The
+        // metadata is NOT duplicated into the signal itself so large SDP strings are
+        // transmitted exactly once (Reverb max message size).
+        $wirePayload = [
             'id' => $signalId,
             'signal_id' => $signalId,
             'signalType' => $signalType,
             'fromUserId' => $sender->id,
             'targetUserId' => $targetUserId,
+            'payload' => $payload,
             'timestamp' => microtime(true),
-        ]);
+        ];
 
         // Keep last 50 signals in cache for recovery/polling
         $cacheKey = "meeting:{$meetingUuid}:signals";
+        $cacheEntry = $wirePayload;
+
         try {
             $existing = Cache::get($cacheKey, []);
             if (! is_array($existing)) {
                 $existing = [];
             }
-            $existing[] = [
-                'id' => $signalId,
-                'signalType' => $signalType,
-                'fromUserId' => $sender->id,
-                'targetUserId' => $targetUserId,
-                'payload' => $payloadWithId,
-                'timestamp' => microtime(true),
-            ];
+            $existing[] = $cacheEntry;
             if (count($existing) > 50) {
                 $existing = array_slice($existing, -50);
             }
-            Cache::put($cacheKey, $existing, 45);
+            Cache::put($cacheKey, $existing, 300);
         } catch (\Throwable $e) {
-            Log::debug('Meeting signal cache warning: '.$e->getMessage());
+            Log::warning('Meeting signal cache warning: '.$e->getMessage());
         }
 
         // Broadcast realtime WebRTC signal event
@@ -999,16 +1000,11 @@ class MeetingService
             event(new MeetingRealtimeEvent(
                 meetingUuid: $meetingUuid,
                 eventType: 'meeting_signal',
-                payload: [
-                    'signalType' => $signalType,
-                    'fromUserId' => $sender->id,
-                    'targetUserId' => $targetUserId,
-                    'payload' => $payloadWithId,
-                ],
+                payload: $wirePayload,
                 senderUserId: $sender->id
             ));
         } catch (\Throwable $e) {
-            Log::debug('MeetingRealtimeEvent signal broadcast fallback: '.$e->getMessage());
+            Log::warning('Meeting signal broadcast failed (WebRTC signaling may be degraded): '.$e->getMessage());
         }
 
         return true;

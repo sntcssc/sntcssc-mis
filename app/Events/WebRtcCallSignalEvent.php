@@ -64,18 +64,16 @@ class WebRtcCallSignalEvent implements ShouldBroadcastNow
     {
         $id = $this->signalId ?: ($this->payload['id'] ?? ($this->payload['signal_id'] ?? ('sig_'.(string) Str::uuid())));
 
+        // Keep this payload compact: SDP offers/answers ride inside $this->payload and
+        // must stay under the Reverb max message size (see .env). Clients fall back to
+        // these snake_case keys in their signal handler chains.
         return [
             'id' => $id,
             'signal_id' => $id,
-            'signalId' => $id,
             'call_uuid' => $this->callUuid,
-            'callUuid' => $this->callUuid,
             'recipient_user_id' => $this->recipientUserId,
-            'recipientUserId' => $this->recipientUserId,
             'sender_user_id' => $this->senderUserId,
-            'senderUserId' => $this->senderUserId,
             'signal_type' => $this->signalType,
-            'signalType' => $this->signalType,
             'type' => $this->signalType,
             'payload' => array_merge(['id' => $id, 'signal_id' => $id], $this->payload),
             'timestamp' => now()->toISOString(),

@@ -53,15 +53,13 @@ class MeetingRealtimeEvent implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
+        // Keep this payload compact: WebRTC signaling (SDP offers/answers) rides inside
+        // $this->payload and must stay under the Reverb max message size (see .env).
         return [
-            'meeting_uuid' => $this->meetingUuid,
-            'meetingUuid' => $this->meetingUuid,
             'event_type' => $this->eventType,
-            'eventType' => $this->eventType,
             'type' => $this->eventType,
             'payload' => $this->payload,
             'sender_user_id' => $this->senderUserId,
-            'senderUserId' => $this->senderUserId,
             'timestamp' => now()->toISOString(),
         ];
     }

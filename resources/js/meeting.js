@@ -383,16 +383,38 @@ async function addSafeIceCandidate(pc, candidate) {
 }
 
 /**
- * Deterministically find transceiver for kind ('audio' or 'video') without guessing.
+ * Deterministically find the transceiver for kind ('audio' or 'video').
+ *
+ * Prefer ASSOCIATED transceivers (mid !== null): after setRemoteDescription, stray
+ * unassociated transceivers can exist (e.g. created before the remote description
+ * arrived), and attaching a local track to one of those means the media is never
+ * sent — the negotiated m-line then stays effectively receive-only, producing
+ * one-way audio/video. The index fallback below only applies while no associated
+ * transceiver exists yet (pre-offer local description state).
  */
 function getTransceiverByKind(pc, kind) {
     if (!pc || typeof pc.getTransceivers !== 'function') return null;
     const list = pc.getTransceivers();
-    return list.find((t, idx) =>
-        (t.receiver?.track?.kind === kind) ||
-        (t.sender?.track?.kind === kind) ||
-        (kind === 'audio' ? (t.mid === '0' || idx === 0) : (t.mid === '1' || idx === 1))
-    ) || null;
+
+    // 1. Already sending this kind on an associated transceiver.
+    const sending = list.find((t) => t.mid !== null && t.sender?.track?.kind === kind);
+    if (sending) return sending;
+
+    // 2. Associated with a negotiated m-line of this kind.
+    const associated = list.find((t) => t.mid !== null && t.receiver?.track?.kind === kind);
+    if (associated) return associated;
+
+    // 3. Pre-offer: local track was added via addTransceiver(track) but not yet negotiated.
+    const preOffer = list.find((t) => t.mid === null && (t.sender?.track?.kind === kind || t.receiver?.track?.kind === kind));
+    if (preOffer) return preOffer;
+
+    // 4. Pre-offer transceivers created empty, in deterministic mid order.
+    const fallbackMid = kind === 'audio' ? '0' : '1';
+    const byMid = list.find((t) => t.mid === fallbackMid);
+    if (byMid) return byMid;
+
+    const idx = kind === 'audio' ? 0 : 1;
+    return list[idx] || null;
 }
 
 function ensureDeterministicTransceivers(pc, stream = null) {
@@ -734,6 +756,16 @@ export function meetingRoomAlpine(config = {}) {
             }, 3000);
             this._timers.push(peerCheckInterval);
 
+            // Periodic WebRTC connection-health diagnostics reporting (every 10s)
+            const diagInterval = setInterval(() => {
+                if (!this.inPreJoinLobby && this.currentUserId && this.$wire && typeof this.$wire.reportWebRtcDiagnostics === 'function') {
+                    try {
+                        this.$wire.reportWebRtcDiagnostics(this.collectWebRtcDiagnostics());
+                    } catch (e) {}
+                }
+            }, 10000);
+            this._timers.push(diagInterval);
+
             this.bindListener(document, 'livewire:navigating', () => {
                 this.destroy();
             });
@@ -867,7 +899,10 @@ export function meetingRoomAlpine(config = {}) {
             }
             if (!syncUrl) return;
 
-            this._lastSignalTimestamp = this._lastSignalTimestamp || (Date.now() / 1000 - 5);
+            // Use 0 so the server's own clock governs the cutoff — mixing the client
+            // clock with the server microtime breaks under clock skew and silently
+            // filters out fresh signals. Duplicates are handled via _processedSignalIds.
+            this._lastSignalTimestamp = 0;
 
             const poll = async () => {
                 if (window.WebSocketState && window.WebSocketState.isConnected) {
@@ -931,7 +966,8 @@ export function meetingRoomAlpine(config = {}) {
         syncActivePeers() {
             if (this.inPreJoinLobby || !this.currentUserId) return;
             const myId = Number(this.currentUserId);
-            
+            const nowMs = Date.now();
+
             // Collect participant IDs from DOM, known registry, and existing peers
             const domElements = document.querySelectorAll('[data-remote-video-user]');
             const domIds = Array.from(domElements)
@@ -943,28 +979,105 @@ export function meetingRoomAlpine(config = {}) {
 
             allActiveIds.forEach((pId) => {
                 if (!pId || pId === myId) return;
-                const peer = this.peers[pId];
-                const isDisconnected = !peer || !peer.pc ||
-                    peer.pc.connectionState === 'failed' || peer.pc.connectionState === 'disconnected' ||
-                    peer.pc.iceConnectionState === 'failed' || peer.pc.iceConnectionState === 'disconnected';
+                let peer = this.peers[pId];
 
-                if (isDisconnected) {
-                    if (peer && peer.pc && (peer.pc.connectionState === 'failed' || peer.pc.iceConnectionState === 'failed')) {
-                        if (peer._candidateTimer) clearTimeout(peer._candidateTimer);
-                        try { peer.pc.close(); } catch (e) {}
-                        delete this.peers[pId];
+                if (peer && peer.pc) {
+                    const state = peer.pc.connectionState;
+                    const iceState = peer.pc.iceConnectionState;
+                    const isFailed = state === 'failed' || iceState === 'failed';
+                    const isConnecting = state === 'new' || state === 'connecting';
+
+                    // 'disconnected' is often transient (network blip, silent remote).
+                    // Only treat it as dead after a grace period so we don't storm the
+                    // signaling endpoint with renegotiation offers every few seconds.
+                    if (state === 'disconnected' || iceState === 'disconnected') {
+                        if (!peer._disconnectedSince) {
+                            peer._disconnectedSince = nowMs;
+                            return;
+                        }
+                        if ((nowMs - peer._disconnectedSince) < 10000) {
+                            return;
+                        }
+                    } else if (peer._disconnectedSince) {
+                        peer._disconnectedSince = 0;
                     }
-                    if (myId < pId) {
-                        this.initiatePeerConnection(pId);
-                    } else {
-                        this.sendMeetingSignal('peer_presence', { userId: myId }, pId);
+
+                    if (isConnecting) {
+                        // Give ICE/DTLS a window to complete; if the peer connection
+                        // never becomes established (e.g. the remote answer was lost),
+                        // recycle it below so negotiation can restart cleanly.
+                        if (!peer._connectingSince) {
+                            peer._connectingSince = nowMs;
+                            return;
+                        }
+                        if ((nowMs - peer._connectingSince) < 15000) {
+                            return;
+                        }
+                    } else if (peer._connectingSince) {
+                        peer._connectingSince = 0;
+                        if (!isFailed) {
+                            return;
+                        }
                     }
+
+                    if (!isFailed && !isConnecting) {
+                        return;
+                    }
+
+                    if (peer._candidateTimer) clearTimeout(peer._candidateTimer);
+                    try { peer.pc.close(); } catch (e) {}
+                    delete this.peers[pId];
+                    peer = null;
+                }
+
+                // Backoff so repeated failures don't hammer the signaling endpoint
+                const lastAttempt = peer && peer._lastOfferAttempt ? peer._lastOfferAttempt : 0;
+                if ((nowMs - lastAttempt) < 2000) {
+                    return;
+                }
+
+                if (myId < pId) {
+                    this.initiatePeerConnection(pId);
+                } else {
+                    if (peer) {
+                        peer._lastOfferAttempt = nowMs;
+                    }
+                    this.sendMeetingSignal('peer_presence', { userId: myId }, pId);
                 }
             });
         },
 
-        sendMeetingSignal(signalType, payload = {}, targetUserId = null) {
-            const token = (typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') : '') || '';
+        /**
+         * Snapshot of every peer connection's media health for supportability logs:
+         * connection/ICE/signaling states, sender + receiver track readiness, and
+         * local stream state. Reported to the server every 10 seconds.
+         */
+        collectWebRtcDiagnostics() {
+            const trackInfo = (t) => t ? (t.kind + ':' + t.readyState + ':' + (t.enabled ? 'enabled' : 'disabled') + (t.muted ? ':muted' : '')) : 'none';
+            const peers = {};
+            Object.values(this.peers).forEach((p) => {
+                peers[p.userId] = {
+                    connectionState: p.pc ? p.pc.connectionState : null,
+                    iceState: p.pc ? p.pc.iceConnectionState : null,
+                    signalingState: p.pc ? p.pc.signalingState : null,
+                    senders: p.pc ? p.pc.getSenders().map((s) => trackInfo(s.track)) : [],
+                    receivers: p.pc ? p.pc.getReceivers().map((r) => trackInfo(r.track)) : [],
+                    remoteStreamTracks: p.stream ? p.stream.getTracks().map(trackInfo) : [],
+                    offerTimestamp: p._offerTimestamp || null,
+                };
+            });
+            return {
+                localStreamTracks: this.localStream ? this.localStream.getTracks().map(trackInfo) : [],
+                micMuted: this.micMuted,
+                videoOff: this.videoOff,
+                screenSharing: this.screenSharing,
+                websocket: !!(window.WebSocketState && window.WebSocketState.isConnected),
+                knownPeerIds: Array.from(this._knownPeerIds || []),
+                peers,
+            };
+        },
+
+        sendMeetingSignal(signalType, payload = {}, targetUserId = null) {            const token = (typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') : '') || '';
             const rawUuid = this.meetingUuid || config.meetingUuid || '';
             const uuid = encodeURIComponent(rawUuid);
 
@@ -1185,6 +1298,7 @@ export function meetingRoomAlpine(config = {}) {
             const id = Number(targetUserId);
             const peer = this.getOrCreatePeerConnection(id);
             if (!peer || !peer.pc) return;
+            peer._lastOfferAttempt = Date.now();
 
             // If we already have a pending local offer, re-transmit it to unblock the peer
             if (peer.pc.signalingState === 'have-local-offer') {
@@ -2141,8 +2255,8 @@ export function meetingRoomAlpine(config = {}) {
                 this.videoOff = true;
                 const isBusy = (err.name === 'NotReadableError' || err.name === 'TrackStartError');
                 this.hardwareNotice.message = isBusy ? 'Camera is in use by another app.' : 'Could not access camera.';
-                canRetryCamera: true,
-                isRetrying = false;
+                this.hardwareNotice.canRetryCamera = true;
+                this.hardwareNotice.isRetrying = false;
             }
             this.sendMeetingSignal('peer_state', { isMuted: this.micMuted, isVideoOff: this.videoOff, isScreenSharing: this.screenSharing });
         },

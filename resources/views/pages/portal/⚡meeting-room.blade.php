@@ -585,6 +585,28 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
         }
     }
 
+    /**
+     * Receive periodic WebRTC connection-health diagnostics from the meeting client
+     * (peer connection states, track readiness, media direction) for supportability.
+     */
+    public function reportWebRtcDiagnostics(array $diagnostics = []): void
+    {
+        $user = auth()->user();
+        if (! $this->meeting || ! $user) {
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::info('WEBRTC_DIAG meeting='.$this->meeting->uuid.' user='.$user->id, [
+                'meeting_id' => $this->meeting->id,
+                'user_id' => $user->id,
+                'diagnostics' => $diagnostics,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::debug('WebRTC diagnostics report failed: '.$e->getMessage());
+        }
+    }
+
     /* ----------------------------------------------------------------- *
      *  Leave / End Meeting Confirmation Handlers
      * ----------------------------------------------------------------- */
