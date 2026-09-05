@@ -34,7 +34,6 @@ new class extends Component {
             :label="__('Team name')"
             type="text"
             required
-            autofocus
             :error="$errors->first('teamName')"
             data-test="switcher-create-team-name"
         />

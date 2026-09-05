@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Events\MeetingRealtimeEvent;
 use App\Models\ChatMeeting;
 use App\Models\ChatMeetingParticipant;
 use App\Models\Setting;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -595,9 +597,14 @@ class MeetingService
                 ]);
             }
 
-            $existing = ChatMeetingParticipant::where('meeting_id', $meeting->id)
+            $existing = ChatMeetingParticipant::withTrashed()
+                ->where('meeting_id', $meeting->id)
                 ->where('user_id', $user->id)
                 ->first();
+
+            if ($existing && $existing->trashed()) {
+                $existing->restore();
+            }
 
             // Determine if user requires waiting room admission
             $isInvited = $existing && in_array($existing->status, [ChatMeetingParticipant::STATUS_INVITED, ChatMeetingParticipant::STATUS_JOINED]);
@@ -605,22 +612,48 @@ class MeetingService
 
             $initialStatus = $requiresWaiting ? ChatMeetingParticipant::STATUS_WAITING : ChatMeetingParticipant::STATUS_JOINED;
 
-            $participant = ChatMeetingParticipant::firstOrCreate(
-                ['meeting_id' => $meeting->id, 'user_id' => $user->id],
-                [
+            if ($existing) {
+                $existing->update([
+                    'role' => $meeting->isHost($user) ? ChatMeetingParticipant::ROLE_HOST : $existing->role,
+                    'status' => $requiresWaiting ? $initialStatus : ChatMeetingParticipant::STATUS_JOINED,
+                    'joined_at' => $requiresWaiting ? null : now(),
+                    'left_at' => null,
+                ]);
+                $participant = $existing;
+            } else {
+                $participant = ChatMeetingParticipant::create([
+                    'meeting_id' => $meeting->id,
+                    'user_id' => $user->id,
                     'role' => $meeting->isHost($user) ? ChatMeetingParticipant::ROLE_HOST : ChatMeetingParticipant::ROLE_PARTICIPANT,
                     'status' => $initialStatus,
                     'joined_at' => $requiresWaiting ? null : now(),
-                ]
-            );
-
-            if (! $requiresWaiting && $participant->status !== ChatMeetingParticipant::STATUS_JOINED) {
-                $participant->update([
-                    'status' => ChatMeetingParticipant::STATUS_JOINED,
-                    'joined_at' => now(),
-                    'left_at' => null,
                 ]);
             }
+
+            try {
+                event(new MeetingRealtimeEvent(
+                    meetingUuid: $meeting->uuid,
+                    eventType: $participant->status === ChatMeetingParticipant::STATUS_WAITING ? 'waiting_joined' : 'participant_joined',
+                    payload: [
+                        'participant_id' => $participant->id,
+                        'user_id' => $user->id,
+                        'user_name' => $user->name,
+                        'user_avatar' => $user->avatarUrl(),
+                        'role' => $participant->role,
+                        'status' => $participant->status,
+                    ],
+                    senderUserId: $user->id
+                ));
+            } catch (\Throwable $e) {
+                Log::debug('MeetingRealtimeEvent join broadcast fallback: '.$e->getMessage());
+            }
+
+            AuditLogService::log(
+                event: 'meeting_participant_joined',
+                description: "{$user->name} joined meeting '{$meeting->title}' (#{$meeting->id}) as {$participant->role}",
+                auditable: $meeting,
+                userId: $user->id
+            );
 
             return $participant;
         });
@@ -637,25 +670,42 @@ class MeetingService
             ]);
         }
 
-        $participant = $meeting->participants()->find($participantId);
-        if ($participant) {
-            $participant->update([
-                'status' => ChatMeetingParticipant::STATUS_JOINED,
-                'joined_at' => now(),
-                'left_at' => null,
-            ]);
+        return DB::transaction(function () use ($meeting, $participantId, $actor) {
+            $participant = $meeting->participants()->find($participantId);
+            if ($participant) {
+                $participant->update([
+                    'status' => ChatMeetingParticipant::STATUS_JOINED,
+                    'joined_at' => now(),
+                    'left_at' => null,
+                ]);
 
-            AuditLogService::log(
-                event: 'meeting_participant_admitted',
-                description: "Admitted {$participant->displayName()} to meeting '{$meeting->title}'",
-                auditable: $meeting,
-                userId: $actor->id
-            );
+                try {
+                    event(new MeetingRealtimeEvent(
+                        meetingUuid: $meeting->uuid,
+                        eventType: 'waiting_admitted',
+                        payload: [
+                            'participant_id' => $participant->id,
+                            'user_id' => $participant->user_id,
+                            'user_name' => $participant->displayName(),
+                        ],
+                        senderUserId: $actor->id
+                    ));
+                } catch (\Throwable $e) {
+                    Log::debug('MeetingRealtimeEvent admit broadcast fallback: '.$e->getMessage());
+                }
 
-            return true;
-        }
+                AuditLogService::log(
+                    event: 'meeting_participant_admitted',
+                    description: "Admitted {$participant->displayName()} to meeting '{$meeting->title}'",
+                    auditable: $meeting,
+                    userId: $actor->id
+                );
 
-        return false;
+                return true;
+            }
+
+            return false;
+        });
     }
 
     /**
@@ -669,17 +719,40 @@ class MeetingService
             ]);
         }
 
-        $participant = $meeting->participants()->find($participantId);
-        if ($participant) {
-            $participant->update([
-                'status' => ChatMeetingParticipant::STATUS_DENIED,
-                'left_at' => now(),
-            ]);
+        return DB::transaction(function () use ($meeting, $participantId, $actor) {
+            $participant = $meeting->participants()->find($participantId);
+            if ($participant) {
+                $participant->update([
+                    'status' => ChatMeetingParticipant::STATUS_DENIED,
+                    'left_at' => now(),
+                ]);
 
-            return true;
-        }
+                try {
+                    event(new MeetingRealtimeEvent(
+                        meetingUuid: $meeting->uuid,
+                        eventType: 'waiting_denied',
+                        payload: [
+                            'participant_id' => $participant->id,
+                            'user_id' => $participant->user_id,
+                        ],
+                        senderUserId: $actor->id
+                    ));
+                } catch (\Throwable $e) {
+                    Log::debug('MeetingRealtimeEvent deny broadcast fallback: '.$e->getMessage());
+                }
 
-        return false;
+                AuditLogService::log(
+                    event: 'meeting_participant_denied',
+                    description: "Denied participant {$participant->displayName()} access to meeting '{$meeting->title}'",
+                    auditable: $meeting,
+                    userId: $actor->id
+                );
+
+                return true;
+            }
+
+            return false;
+        });
     }
 
     /**
@@ -693,21 +766,38 @@ class MeetingService
             ]);
         }
 
-        $participant = $meeting->participants()->find($participantId);
-        if ($participant && ! $participant->isHost()) {
-            $participant->update(['role' => $role]);
+        return DB::transaction(function () use ($meeting, $participantId, $role, $actor) {
+            $participant = $meeting->participants()->find($participantId);
+            if ($participant && ! $participant->isHost()) {
+                $participant->update(['role' => $role]);
 
-            AuditLogService::log(
-                event: 'meeting_participant_role_updated',
-                description: "Changed {$participant->displayName()} role to {$role} in meeting '{$meeting->title}'",
-                auditable: $meeting,
-                userId: $actor->id
-            );
+                try {
+                    event(new MeetingRealtimeEvent(
+                        meetingUuid: $meeting->uuid,
+                        eventType: 'role_updated',
+                        payload: [
+                            'participant_id' => $participant->id,
+                            'user_id' => $participant->user_id,
+                            'role' => $role,
+                        ],
+                        senderUserId: $actor->id
+                    ));
+                } catch (\Throwable $e) {
+                    Log::debug('MeetingRealtimeEvent role broadcast fallback: '.$e->getMessage());
+                }
 
-            return true;
-        }
+                AuditLogService::log(
+                    event: 'meeting_participant_role_updated',
+                    description: "Changed {$participant->displayName()} role to {$role} in meeting '{$meeting->title}'",
+                    auditable: $meeting,
+                    userId: $actor->id
+                );
 
-        return false;
+                return true;
+            }
+
+            return false;
+        });
     }
 
     /**
@@ -721,13 +811,35 @@ class MeetingService
             ]);
         }
 
-        $merged = array_merge($meeting->settings ?? [], $settings);
-        $meeting->update([
-            'settings' => $merged,
-            'updated_by' => $actor->id,
-        ]);
+        return DB::transaction(function () use ($meeting, $settings, $actor) {
+            $merged = array_merge($meeting->settings ?? [], $settings);
+            $meeting->update([
+                'settings' => $merged,
+                'updated_by' => $actor->id,
+            ]);
 
-        return true;
+            try {
+                event(new MeetingRealtimeEvent(
+                    meetingUuid: $meeting->uuid,
+                    eventType: 'restrictions_updated',
+                    payload: [
+                        'settings' => $merged,
+                    ],
+                    senderUserId: $actor->id
+                ));
+            } catch (\Throwable $e) {
+                Log::debug('MeetingRealtimeEvent restrictions broadcast fallback: '.$e->getMessage());
+            }
+
+            AuditLogService::log(
+                event: 'meeting_restrictions_updated',
+                description: "Updated restrictions for meeting '{$meeting->title}'",
+                auditable: $meeting,
+                userId: $actor->id
+            );
+
+            return true;
+        });
     }
 
     /**
@@ -753,6 +865,20 @@ class MeetingService
                 'left_at' => now(),
             ]);
 
+            try {
+                event(new MeetingRealtimeEvent(
+                    meetingUuid: $meeting->uuid,
+                    eventType: 'meeting_ended',
+                    payload: [
+                        'ended_by' => $actor->id,
+                        'ended_by_name' => $actor->name,
+                    ],
+                    senderUserId: $actor->id
+                ));
+            } catch (\Throwable $e) {
+                Log::debug('MeetingRealtimeEvent end broadcast fallback: '.$e->getMessage());
+            }
+
             AuditLogService::log(
                 event: 'meeting_ended',
                 description: "Ended meeting '{$meeting->title}' (#{$meeting->id})",
@@ -762,5 +888,222 @@ class MeetingService
 
             return true;
         });
+    }
+
+    /**
+     * Check if a live real-time WebSocket connection/driver is configured and supported for meetings.
+     */
+    public function isRealtimeSupported(): bool
+    {
+        $driver = config('broadcasting.default');
+
+        if (in_array($driver, ['null', 'log'], true) || empty($driver)) {
+            return false;
+        }
+
+        if ($driver === 'reverb') {
+            return ! empty(config('broadcasting.connections.reverb.key'))
+                && ! empty(config('broadcasting.connections.reverb.secret'))
+                && ! empty(config('broadcasting.connections.reverb.app_id'));
+        }
+
+        if ($driver === 'pusher') {
+            return ! empty(config('broadcasting.connections.pusher.key'))
+                && ! empty(config('broadcasting.connections.pusher.secret'))
+                && ! empty(config('broadcasting.connections.pusher.app_id'));
+        }
+
+        return true;
+    }
+
+    /**
+     * Get ICE STUN and TURN server configurations for WebRTC online meetings.
+     * Checks dedicated meeting settings first with fallback to global chat settings.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getIceServers(): array
+    {
+        $stunServer = (string) (Setting::get('meeting.webrtc_stun_server') ?: Setting::get('chat.webrtc_stun_server', 'stun:stun.l.google.com:19302'));
+        $turnServer = Setting::get('meeting.webrtc_turn_server') ?: Setting::get('chat.webrtc_turn_server');
+        $turnUsername = Setting::get('meeting.webrtc_turn_username') ?: Setting::get('chat.webrtc_turn_username');
+        $turnCredential = Setting::get('meeting.webrtc_turn_credential') ?: Setting::get('chat.webrtc_turn_credential');
+
+        $servers = [
+            ['urls' => $stunServer ?: 'stun:stun.l.google.com:19302'],
+            ['urls' => 'stun:stun1.l.google.com:19302'],
+            ['urls' => 'stun:stun2.l.google.com:19302'],
+        ];
+
+        if (! empty($turnServer)) {
+            $turnConfig = ['urls' => $turnServer];
+            if (! empty($turnUsername)) {
+                $turnConfig['username'] = $turnUsername;
+            }
+            if (! empty($turnCredential)) {
+                $turnConfig['credential'] = $turnCredential;
+            }
+            $servers[] = $turnConfig;
+        }
+
+        return $servers;
+    }
+
+    /**
+     * Send WebRTC realtime signal for an online meeting.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function sendSignal(
+        string $meetingUuid,
+        User $sender,
+        string $signalType,
+        array $payload = [],
+        ?int $targetUserId = null
+    ): bool {
+        $signalId = $payload['signal_id'] ?? $payload['id'] ?? ('sig_'.(string) Str::uuid());
+        $payloadWithId = array_merge($payload, [
+            'id' => $signalId,
+            'signal_id' => $signalId,
+            'signalType' => $signalType,
+            'fromUserId' => $sender->id,
+            'targetUserId' => $targetUserId,
+            'timestamp' => microtime(true),
+        ]);
+
+        // Keep last 50 signals in cache for recovery/polling
+        $cacheKey = "meeting:{$meetingUuid}:signals";
+        try {
+            $existing = Cache::get($cacheKey, []);
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+            $existing[] = [
+                'id' => $signalId,
+                'signalType' => $signalType,
+                'fromUserId' => $sender->id,
+                'targetUserId' => $targetUserId,
+                'payload' => $payloadWithId,
+                'timestamp' => microtime(true),
+            ];
+            if (count($existing) > 50) {
+                $existing = array_slice($existing, -50);
+            }
+            Cache::put($cacheKey, $existing, 45);
+        } catch (\Throwable $e) {
+            Log::debug('Meeting signal cache warning: '.$e->getMessage());
+        }
+
+        // Broadcast realtime WebRTC signal event
+        try {
+            event(new MeetingRealtimeEvent(
+                meetingUuid: $meetingUuid,
+                eventType: 'meeting_signal',
+                payload: [
+                    'signalType' => $signalType,
+                    'fromUserId' => $sender->id,
+                    'targetUserId' => $targetUserId,
+                    'payload' => $payloadWithId,
+                ],
+                senderUserId: $sender->id
+            ));
+        } catch (\Throwable $e) {
+            Log::debug('MeetingRealtimeEvent signal broadcast fallback: '.$e->getMessage());
+        }
+
+        return true;
+    }
+
+    /**
+     * Record a floating emoji reaction and broadcast it.
+     *
+     * @return array<string, mixed>
+     */
+    public function recordReaction(string $meetingUuid, User $user, string $emoji): array
+    {
+        $reaction = [
+            'id' => uniqid('rx_'),
+            'emoji' => $emoji,
+            'user' => $user->name,
+            'user_name' => $user->name,
+            'sender_id' => $user->id,
+            'created_at' => microtime(true),
+        ];
+
+        // Store in cache for polling clients
+        $cacheKey = "meeting:{$meetingUuid}:reactions";
+        try {
+            $reactions = Cache::get($cacheKey, []);
+            if (! is_array($reactions)) {
+                $reactions = [];
+            }
+            $reactions[] = $reaction;
+            if (count($reactions) > 30) {
+                $reactions = array_slice($reactions, -30);
+            }
+            Cache::put($cacheKey, $reactions, 30);
+        } catch (\Throwable $e) {
+            Log::debug('Meeting reaction cache warning: '.$e->getMessage());
+        }
+
+        // Broadcast to all active WebSocket listeners
+        try {
+            event(new MeetingRealtimeEvent(
+                meetingUuid: $meetingUuid,
+                eventType: 'floating_emoji',
+                payload: $reaction,
+                senderUserId: $user->id
+            ));
+        } catch (\Throwable $e) {
+            Log::debug('Meeting emoji broadcast fallback: '.$e->getMessage());
+        }
+
+        return $reaction;
+    }
+
+    /**
+     * Retrieve recent reactions since timestamp from cache.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getRecentReactions(string $meetingUuid, float $sinceTimestamp = 0.0): array
+    {
+        $cacheKey = "meeting:{$meetingUuid}:reactions";
+        $reactions = Cache::get($cacheKey, []);
+        if (! is_array($reactions)) {
+            return [];
+        }
+
+        if ($sinceTimestamp <= 0) {
+            return $reactions;
+        }
+
+        return array_values(array_filter($reactions, fn ($r) => ($r['created_at'] ?? 0) > $sinceTimestamp));
+    }
+
+    /**
+     * Retrieve recent cached WebRTC signals for polling fallback.
+     * Filters out signals sent by the requesting user (they don't need their own back).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getRecentSignals(string $meetingUuid, float $sinceTimestamp = 0.0, ?int $excludeUserId = null): array
+    {
+        $cacheKey = "meeting:{$meetingUuid}:signals";
+        $signals = Cache::get($cacheKey, []);
+        if (! is_array($signals)) {
+            return [];
+        }
+
+        return array_values(array_filter($signals, function ($s) use ($sinceTimestamp, $excludeUserId) {
+            if ($sinceTimestamp > 0 && ($s['timestamp'] ?? 0) <= $sinceTimestamp) {
+                return false;
+            }
+            if ($excludeUserId && ($s['fromUserId'] ?? null) == $excludeUserId) {
+                return false;
+            }
+
+            return true;
+        }));
     }
 }

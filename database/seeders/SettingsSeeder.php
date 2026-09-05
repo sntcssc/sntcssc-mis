@@ -183,6 +183,7 @@ class SettingsSeeder extends Seeder
             ['key' => 'chat.channel_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Broadcast Channels'],
             ['key' => 'chat.voice_call_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable WebRTC Voice Calls'],
             ['key' => 'chat.video_call_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable WebRTC Video Calls'],
+            ['key' => 'chat.require_websocket_for_calls', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Require Active WebSocket for Calling'],
             ['key' => 'chat.transport_driver', 'value' => 'hybrid', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'Chat Realtime Transport', 'options' => ['hybrid' => 'Hybrid (Reverb WebSocket + Fallback Poll)', 'polling' => 'Livewire Polling Only (wire:poll)', 'broadcasting' => 'Broadcasting Only (Reverb WebSockets)']],
             ['key' => 'chat.poll_interval', 'value' => '3s', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'Chat Polling Interval', 'options' => ['3s' => '3 Seconds', '5s' => '5 Seconds', '10s' => '10 Seconds', '30s' => '30 Seconds']],
             ['key' => 'chat.webrtc_signaling_driver', 'value' => 'reverb', 'group' => 'chat', 'type' => Setting::TYPE_SELECT, 'label' => 'WebRTC Signaling Driver', 'options' => ['reverb' => 'Reverb / WebSockets Signaling', 'internal_poll' => 'Internal Polling Signal Exchange']],

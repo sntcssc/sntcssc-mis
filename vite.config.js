@@ -17,9 +17,11 @@ export default defineConfig({
             fonts: [
                 bunny('Geist', {
                     weights: [400, 500, 600, 700],
+                    preload: false,
                 }),
                 bunny('Geist Mono', {
                     weights: [400, 500],
+                    preload: false,
                 }),
             ],
         }),

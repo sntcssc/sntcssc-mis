@@ -110,9 +110,44 @@ class ChatMessage extends Model
         return $this->hasMany(ChatMessageAttachment::class, 'message_id');
     }
 
+    public function reactions(): HasMany
+    {
+        return $this->hasMany(ChatMessageReaction::class, 'message_id');
+    }
+
     public function statuses(): HasMany
     {
         return $this->hasMany(ChatMessageStatus::class, 'message_id');
+    }
+
+    /**
+     * Get aggregated reactions grouped by emoji.
+     *
+     * @return array<string, array{count: int, users: array<string>, has_reacted: bool}>
+     */
+    public function groupedReactions(?int $currentUserId = null): array
+    {
+        $currentUserId ??= auth()->id();
+        $reactions = $this->reactions()->with('user')->get();
+
+        $grouped = [];
+        foreach ($reactions as $rx) {
+            $emoji = $rx->emoji;
+            if (! isset($grouped[$emoji])) {
+                $grouped[$emoji] = [
+                    'count' => 0,
+                    'users' => [],
+                    'has_reacted' => false,
+                ];
+            }
+            $grouped[$emoji]['count']++;
+            $grouped[$emoji]['users'][] = $rx->user?->name ?? __('User');
+            if ($currentUserId && (int) $rx->user_id === (int) $currentUserId) {
+                $grouped[$emoji]['has_reacted'] = true;
+            }
+        }
+
+        return $grouped;
     }
 
     /* ----------------------------------------------------------------- *

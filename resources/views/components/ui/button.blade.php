@@ -1,6 +1,8 @@
 @props([
     'variant' => 'default',
     'size' => 'default',
+    'icon' => null,
+    'iconPosition' => 'left',
 ])
 
 @php
@@ -32,7 +34,23 @@
 @endphp
 
 @if ($attributes->has('href'))
-    <a {{ $attributes->merge(['class' => $classes]) }}>{{ $slot }}</a>
+    <a {{ $attributes->merge(['class' => $classes]) }}>
+        @if ($icon && $iconPosition === 'left')
+            <x-icon :name="$icon" class="size-4" />
+        @endif
+        {{ $slot }}
+        @if ($icon && $iconPosition === 'right')
+            <x-icon :name="$icon" class="size-4" />
+        @endif
+    </a>
 @else
-    <button {{ $attributes->merge(['class' => $classes]) }}>{{ $slot }}</button>
+    <button {{ $attributes->merge(['class' => $classes]) }}>
+        @if ($icon && $iconPosition === 'left')
+            <x-icon :name="$icon" class="size-4" />
+        @endif
+        {{ $slot }}
+        @if ($icon && $iconPosition === 'right')
+            <x-icon :name="$icon" class="size-4" />
+        @endif
+    </button>
 @endif

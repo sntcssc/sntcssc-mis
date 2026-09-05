@@ -86,7 +86,8 @@
                         ['icon' => 'palette', 'label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit'), 'permission' => 'settings.appearance'],
                         ['icon' => 'users', 'label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*'), 'permission' => 'settings.general'],
                         ['icon' => 'message-square', 'label' => __('Live Chat & Calls'), 'href' => route('admin.settings.chat'), 'active' => request()->routeIs('admin.settings.chat'), 'permission' => 'settings.general'],
-                        ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.*'), 'permission' => 'settings.general'],
+                        ['icon' => 'video', 'label' => __('Online Meetings'), 'href' => route('admin.settings.meetings'), 'active' => request()->routeIs('admin.settings.meetings'), 'permission' => 'settings.general'],
+                        ['icon' => 'cpu', 'label' => __('System settings'), 'href' => route('admin.settings.index'), 'active' => request()->routeIs('admin.settings.index', 'admin.settings.general', 'admin.settings.seo', 'admin.settings.appearance', 'admin.settings.email', 'admin.settings.localization', 'admin.settings.payment', 'admin.settings.sms', 'admin.settings.notification', 'admin.settings.system', 'admin.settings.backup', 'admin.backups.index'), 'permission' => 'settings.general'],
                     ],
                 ],
             ],
@@ -229,7 +230,7 @@
                         @foreach ($section['items'] as $item)
                             <li>
                                 <a
-                                    href="{{ $item['href'] ?? '#' }}"
+                                    href="{{ $item['href'] ?? ($item['children'][0]['href'] ?? route('dashboard')) }}"
                                     wire:navigate
                                     title="{{ $item['label'] }}"
                                     class="relative flex items-center justify-center rounded-md px-2 py-1.5 text-sm transition-colors {{ ($item['active'] ?? false) ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent' }}"

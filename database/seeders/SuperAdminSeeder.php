@@ -83,6 +83,7 @@ class SuperAdminSeeder extends Seeder
                 $team = Team::create([
                     'name' => "Super Admin's Team",
                     'is_personal' => true,
+                    'slug' => 'super-admins-team',
                 ]);
 
                 $team->members()->syncWithoutDetaching([

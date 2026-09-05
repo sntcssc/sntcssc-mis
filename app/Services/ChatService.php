@@ -5,10 +5,12 @@ namespace App\Services;
 use App\Events\ChatMessageReadEvent;
 use App\Events\ChatMessageSentEvent;
 use App\Events\ChatMessageUpdatedEvent;
+use App\Events\ChatUserTypingEvent;
 use App\Models\AppNotification;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\ChatMessageAttachment;
+use App\Models\ChatMessageReaction;
 use App\Models\ChatMessageStatus;
 use App\Models\ChatParticipant;
 use App\Models\Setting;
@@ -200,8 +202,43 @@ class ChatService
     }
 
     /* ----------------------------------------------------------------- *
-     *  Message Handling
+     *  Message Handling & Typing State
      * ----------------------------------------------------------------- */
+
+    /**
+     * Broadcast typing status indicator to conversation participants.
+     */
+    public function broadcastTypingIndicator(ChatConversation $conversation, User $user, bool $isTyping = true): bool
+    {
+        // Verify user is an active participant in this conversation
+        $isParticipant = $conversation->participants()
+            ->where('user_id', $user->id)
+            ->whereNull('left_at')
+            ->exists();
+
+        if (! $isParticipant && ! $user->hasRole('Super Administrator')) {
+            return false;
+        }
+
+        // For broadcast channels, verify user has posting permissions before broadcasting typing
+        if ($conversation->isChannel() && ! $conversation->canPost($user)) {
+            return false;
+        }
+
+        try {
+            event(new ChatUserTypingEvent(
+                conversationId: $conversation->id,
+                user: $user,
+                isTyping: $isTyping
+            ));
+
+            return true;
+        } catch (Throwable $e) {
+            Log::debug('ChatUserTypingEvent broadcast skipped or failed: '.$e->getMessage());
+
+            return false;
+        }
+    }
 
     /**
      * Send a message with optional attachments and quote reply.
@@ -245,21 +282,30 @@ class ChatService
                 $this->storeAttachment($message, $attachment, $sender->id);
             }
 
-            // Create delivery/read status records for all other participants
+            // Create delivery/read status records for all other participants in a single bulk insert
             $recipientIds = $conversation->participants()
                 ->where('user_id', '!=', $sender->id)
                 ->whereNull('left_at')
                 ->pluck('user_id')
                 ->all();
 
-            foreach ($recipientIds as $recipientId) {
-                ChatMessageStatus::create([
-                    'message_id' => $message->id,
-                    'user_id' => $recipientId,
-                    'is_delivered' => true,
-                    'delivered_at' => now(),
-                    'is_read' => false,
-                ]);
+            if (! empty($recipientIds)) {
+                $now = now();
+                $statusRows = [];
+                foreach ($recipientIds as $recipientId) {
+                    $statusRows[] = [
+                        'message_id' => $message->id,
+                        'user_id' => $recipientId,
+                        'is_delivered' => true,
+                        'delivered_at' => $now,
+                        'is_read' => false,
+                        'read_at' => null,
+                        'is_deleted_for_me' => false,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+                ChatMessageStatus::insert($statusRows);
             }
 
             // Update conversation last message timestamp & pointer
@@ -478,6 +524,44 @@ class ChatService
             );
 
             return true;
+        });
+    }
+
+    /**
+     * Toggle an emoji reaction on a message by user.
+     */
+    public function toggleReaction(ChatMessage $message, User $user, string $emoji): array
+    {
+        return DB::transaction(function () use ($message, $user, $emoji) {
+            $existing = ChatMessageReaction::where('message_id', $message->id)
+                ->where('user_id', $user->id)
+                ->where('emoji', $emoji)
+                ->first();
+
+            if ($existing) {
+                $existing->forceDelete();
+                $action = 'removed';
+            } else {
+                ChatMessageReaction::create([
+                    'message_id' => $message->id,
+                    'user_id' => $user->id,
+                    'emoji' => $emoji,
+                    'created_by' => $user->id,
+                ]);
+                $action = 'added';
+            }
+
+            try {
+                event(new ChatMessageUpdatedEvent($message, 'reaction_updated'));
+            } catch (Throwable $e) {
+                Log::debug('Realtime ChatMessageUpdatedEvent graceful fallback: '.$e->getMessage());
+            }
+
+            return [
+                'action' => $action,
+                'emoji' => $emoji,
+                'reactions' => $message->groupedReactions($user->id),
+            ];
         });
     }
 
@@ -750,95 +834,43 @@ class ChatService
         array $recipientIds
     ): void {
         $chatEnabled = (bool) Setting::get('chat.enabled', true);
-        if (! $chatEnabled) {
+        if (! $chatEnabled || empty($recipientIds)) {
             return;
         }
-
-        $notifyEmail = (bool) Setting::get('chat.notify_email', true);
-        $notifySms = (bool) Setting::get('chat.notify_sms', false);
-        $notifyWhatsApp = (bool) Setting::get('chat.notify_whatsapp', false);
-        $notifyTelegram = (bool) Setting::get('chat.notify_telegram', false);
 
         $previewText = $message->body ?: __('Sent an attachment');
         $chatUrl = route('admin.chat.index', ['team' => $conversation->team?->slug ?? 'default', 'c' => $conversation->uuid]);
 
-        foreach ($recipientIds as $recipientId) {
-            $recipient = User::find($recipientId);
-            if (! $recipient) {
-                continue;
-            }
+        // Bulk fetch recipients in one single query
+        $recipients = User::whereIn('id', $recipientIds)->get();
 
-            // Always create In-App Database notification
-            $this->notificationService->send(
-                user: $recipient,
-                title: $conversation->isDirect()
-                    ? __('New message from :name', ['name' => $sender->name])
-                    : __(':name in :group', ['name' => $sender->name, 'group' => $conversation->displayNameFor($recipient)]),
-                message: $previewText,
-                category: AppNotification::CATEGORY_CHAT,
-                options: [
-                    'type' => 'chat_message',
-                    'action_url' => $chatUrl,
-                    'action_label' => __('Open Live Chat'),
-                    'icon' => 'message-square',
-                    'color' => 'text-blue-500 bg-blue-500/10 border-blue-500/20',
-                    'created_by' => $sender->id,
-                    'channels' => [AppNotification::CHANNEL_DATABASE],
-                    'metadata' => [
-                        'conversation_id' => $conversation->id,
-                        'message_id' => $message->id,
-                        'sender_id' => $sender->id,
-                    ],
-                ]
-            );
-
-            // Optional External Channels based on Admin Settings
-            if ($notifyEmail && ! empty($recipient->email) && EmailService::isEnabled()) {
-                try {
-                    $emailSubject = __('[Chat] :name: :message', ['name' => $sender->name, 'message' => mb_substr($previewText, 0, 40)]);
-                    $emailBody = view('emails.generic_notification', [
-                        'user' => $recipient,
-                        'title' => __('New Chat Message from :sender', ['sender' => $sender->name]),
-                        'body' => $previewText,
-                        'actionUrl' => $chatUrl,
-                        'actionLabel' => __('Reply in Chat'),
-                    ])->render();
-
-                    $this->emailService->sendDirect($recipient->email, $emailSubject, $emailBody);
-                } catch (Throwable $e) {
-                    Log::debug('Chat email alert error: '.$e->getMessage());
-                }
-            }
-
-            if ($notifyWhatsApp && ! empty($recipient->phone) && WhatsAppService::isEnabled()) {
-                try {
-                    $waText = '*[Chat]* '.$sender->name.': '.$previewText."\n\n".__('Reply').': '.$chatUrl;
-                    $this->whatsAppService->sendDirect($recipient->whatsapp_no ?: $recipient->phone, $waText);
-                } catch (Throwable $e) {
-                    Log::debug('Chat WhatsApp alert error: '.$e->getMessage());
-                }
-            }
-
-            if ($notifySms && ! empty($recipient->phone) && SmsService::isEnabled()) {
-                try {
-                    $smsText = $sender->name.': '.mb_substr($previewText, 0, 100);
-                    $this->smsService->sendDirect($recipient->phone, $smsText);
-                } catch (Throwable $e) {
-                    Log::debug('Chat SMS alert error: '.$e->getMessage());
-                }
-            }
-
-            if ($notifyTelegram && TelegramService::isEnabled()) {
-                try {
-                    $this->telegramService->sendFormatted(
-                        title: __('New Chat Message from :sender', ['sender' => $sender->name]),
-                        body: $previewText,
-                        actionUrl: $chatUrl,
-                        actionLabel: __('Open Chat')
-                    );
-                } catch (Throwable $e) {
-                    Log::debug('Chat Telegram alert error: '.$e->getMessage());
-                }
+        foreach ($recipients as $recipient) {
+            try {
+                // In-App Database notification only
+                $this->notificationService->send(
+                    user: $recipient,
+                    title: $conversation->isDirect()
+                        ? __('New message from :name', ['name' => $sender->name])
+                        : __(':name in :group', ['name' => $sender->name, 'group' => $conversation->displayNameFor($recipient)]),
+                    message: $previewText,
+                    category: AppNotification::CATEGORY_CHAT,
+                    options: [
+                        'type' => 'chat_message',
+                        'action_url' => $chatUrl,
+                        'action_label' => __('Open Live Chat'),
+                        'icon' => 'message-square',
+                        'color' => 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+                        'created_by' => $sender->id,
+                        'channels' => [AppNotification::CHANNEL_DATABASE],
+                        'metadata' => [
+                            'conversation_id' => $conversation->id,
+                            'message_id' => $message->id,
+                            'sender_id' => $sender->id,
+                        ],
+                    ]
+                );
+            } catch (Throwable $e) {
+                // Non-blocking
             }
         }
     }

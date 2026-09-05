@@ -193,6 +193,11 @@ class ChatMeeting extends Model
         return $this->access_mode !== self::ACCESS_INVITED_ONLY;
     }
 
+    public function isOpenAccess(): bool
+    {
+        return $this->isOpenForEveryone();
+    }
+
     public function isChatAllowed(): bool
     {
         return (bool) ($this->settings['chat_enabled'] ?? true);
@@ -208,6 +213,11 @@ class ChatMeeting extends Model
         return (bool) ($this->settings['emoji_enabled'] ?? true);
     }
 
+    public function canParticipantEditDeleteChat(): bool
+    {
+        return (bool) ($this->settings['allow_participant_edit_delete_chat'] ?? false);
+    }
+
     public function isLive(): bool
     {
         return $this->status === self::STATUS_LIVE;
@@ -221,6 +231,11 @@ class ChatMeeting extends Model
     public function isEnded(): bool
     {
         return in_array($this->status, [self::STATUS_ENDED, self::STATUS_CANCELLED], true);
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     public function isVideo(): bool

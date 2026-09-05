@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ChatMeetingParticipant extends Model
 {
+    use Auditable;
     use HasFactory;
+    use SoftDeletes;
 
     public const ROLE_HOST = 'host';
 

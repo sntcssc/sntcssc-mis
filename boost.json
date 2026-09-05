@@ -27,6 +27,7 @@
         "livewire-development",
         "pest-testing",
         "tailwindcss-development",
+        "echo-development",
         "blaze-optimize"
     ]
 }

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ChatConversation;
-use App\Models\ChatMeeting;
 use App\Models\ChatMessage;
 use App\Models\ChatParticipant;
 use App\Services\AuditLogService;
@@ -73,29 +72,5 @@ class ChatJoinController extends Controller
 
         return redirect()->to(route('admin.chat.index', ['current_team' => $teamSlug]).'?c='.$conversation->uuid)
             ->with('success', __('You have successfully joined :title!', ['title' => $conversation->title]));
-    }
-
-    /**
-     * Handle joining an online meeting room via invite code.
-     */
-    public function joinMeeting(Request $request, string $code): RedirectResponse
-    {
-        $user = $request->user();
-        if (! $user) {
-            return redirect()->route('login')->with('error', __('Please login to join this meeting.'));
-        }
-
-        $meeting = ChatMeeting::where('invite_code', $code)->first();
-
-        if (! $meeting) {
-            return redirect()->route('meetings.index')->with('error', __('Invalid or expired meeting invitation link.'));
-        }
-
-        $teamSlug = $user->currentTeam?->slug ?? $user->allTeams()->first()?->slug ?? 'default';
-
-        return redirect()->route('meetings.room', [
-            'current_team' => $teamSlug,
-            'uuid' => $meeting->uuid,
-        ]);
     }
 }

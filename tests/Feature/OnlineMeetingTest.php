@@ -210,6 +210,7 @@ test('Livewire Meeting Room supports in-meeting chat pinning', function () {
 
     Livewire::actingAs($host)
         ->test('pages::portal.meeting-room', ['uuid' => $meeting->uuid])
+        ->call('joinRoomFromLobby')
         ->set('showChatDrawer', true)
         ->set('inRoomMessage', 'Meeting Agenda: Chapter 4 Discussion')
         ->call('sendRoomMessage')
@@ -217,6 +218,43 @@ test('Livewire Meeting Room supports in-meeting chat pinning', function () {
         ->assertSee('Meeting Agenda: Chapter 4 Discussion')
         ->call('unpinInRoomMessage')
         ->assertHasNoErrors();
+});
+
+test('Host can customize meeting link slug in meeting room', function () {
+    $host = User::factory()->create(['name' => 'Host Lead', 'email_verified_at' => now()]);
+
+    /** @var MeetingService $meetingService */
+    $meetingService = app(MeetingService::class);
+    $meeting = $meetingService->createInstantMeeting(host: $host, title: 'Sprint Retrospective');
+
+    Livewire::actingAs($host)
+        ->test('pages::portal.meeting-room', ['uuid' => $meeting->uuid])
+        ->set('editMeetingSlug', 'sprint-retro-2026')
+        ->call('saveMeetingSlug')
+        ->assertHasNoErrors();
+
+    expect($meeting->fresh()->invite_code)->toBe('sprint-retro-2026');
+});
+
+test('Meeting chat moderation allows host and allowed participants to edit and delete messages', function () {
+    $host = User::factory()->create(['name' => 'Host Lead', 'email_verified_at' => now()]);
+
+    /** @var MeetingService $meetingService */
+    $meetingService = app(MeetingService::class);
+    $meeting = $meetingService->createInstantMeeting(host: $host, title: 'Moderated Discussion');
+
+    Livewire::actingAs($host)
+        ->test('pages::portal.meeting-room', ['uuid' => $meeting->uuid])
+        ->call('joinRoomFromLobby')
+        ->set('showChatDrawer', true)
+        ->set('inRoomMessage', 'Draft message to be edited')
+        ->call('sendRoomMessage')
+        ->call('startEditInRoomMessage', 0)
+        ->set('editingInRoomText', 'Final edited message body')
+        ->call('saveEditInRoomMessage')
+        ->assertSee('Final edited message body')
+        ->call('deleteInRoomMessage', 0)
+        ->assertDontSee('Final edited message body');
 });
 
 test('Host can update scheduled meeting details and recurrence', function () {

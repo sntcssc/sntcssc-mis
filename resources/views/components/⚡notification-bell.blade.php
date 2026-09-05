@@ -5,6 +5,7 @@ use App\Models\Setting;
 use App\Services\NotificationService;
 use App\Support\Toast;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 new class extends Component {
@@ -12,18 +13,36 @@ new class extends Component {
     public bool $isOpen = false;
     public int $previousUnreadCount = 0;
     public bool $soundMuted = false;
+    public int $unreadCount = 0;
+    public bool $soundEnabled = true;
+    public int $currentUserId = 0;
 
     public function mount(): void
     {
+        $this->currentUserId = (int) (auth()->id() ?? 0);
+        $this->refreshState();
         $this->previousUnreadCount = $this->unreadCount;
     }
 
-    #[Computed]
-    public function unreadCount(): int
+    public function rendering(): void
+    {
+        $this->refreshState();
+    }
+
+    public function refreshState(): void
     {
         $user = auth()->user();
+        $this->currentUserId = (int) ($user?->id ?? 0);
+        $this->unreadCount = $user ? AppNotification::forUser($user->id)->unread()->count() : 0;
+        $this->soundEnabled = (bool) Setting::get('notification.sound_enabled', true) && ! $this->soundMuted;
+    }
 
-        return $user ? AppNotification::forUser($user->id)->unread()->count() : 0;
+    #[On('echo-private:user.{currentUserId},.RealtimeNotificationEvent')]
+    #[On('echo-private:App.Models.User.{currentUserId},.RealtimeNotificationEvent')]
+    public function onRealtimeNotification(array $event = []): void
+    {
+        $this->refreshState();
+        $this->dispatch('play-notification-chime');
     }
 
     #[Computed]
@@ -51,21 +70,19 @@ new class extends Component {
     }
 
     #[Computed]
-    public function pollInterval(): string
+    public function pollInterval(): ?string
     {
         $driver = (string) Setting::get('notification.realtime_driver', 'hybrid');
 
         if ($driver === 'broadcasting') {
-            return '30s'; // Relaxed heartbeat for pure broadcasting
+            return null; // Driven purely by Reverb WebSockets without polling overhead
         }
 
-        return (string) Setting::get('notification.poll_interval', '3s');
-    }
+        if ($driver === 'hybrid') {
+            return '30s'; // Relaxed heartbeat fallback in hybrid mode
+        }
 
-    #[Computed]
-    public function soundEnabled(): bool
-    {
-        return (bool) Setting::get('notification.sound_enabled', true) && ! $this->soundMuted;
+        return (string) Setting::get('notification.poll_interval', '15s');
     }
 
     public function markAsRead(int $id): void
@@ -124,9 +141,13 @@ new class extends Component {
 
 <div
     x-data="{
-        open: @entangle('isOpen'),
-        unread: @entangle('unreadCount'),
-        soundEnabled: @entangle('soundEnabled'),
+        open: false,
+        get unread() {
+            return this.$wire?.unreadCount ?? 0;
+        },
+        get soundEnabled() {
+            return this.$wire?.soundEnabled ?? true;
+        },
         prevUnread: 0,
         playChime() {
             if (!this.soundEnabled) return;
@@ -165,15 +186,22 @@ new class extends Component {
             }
         },
         init() {
+            if (typeof this.$cleanup === 'function') {
+                this.$cleanup(() => {
+                    this.open = false;
+                });
+            }
             this.prevUnread = this.unread;
-            this.$watch('unread', (val) => {
+            this.$watch('$wire.unreadCount', (val) => {
                 if (val > this.prevUnread && val > 0) {
                     this.playChime();
                     if (window.Notification && Notification.permission === 'granted' && document.hidden) {
-                        new Notification('{{ \App\Models\Setting::appName() }}', {
-                            body: 'You have ' + val + ' unread notification(s)',
-                            icon: '{{ \App\Models\Setting::faviconUrl() ?? '/favicon.ico' }}'
-                        });
+                        try {
+                            new Notification('{{ \App\Models\Setting::appName() }}', {
+                                body: 'You have ' + val + ' unread notification(s)',
+                                icon: '{{ \App\Models\Setting::faviconUrl() ?? '/favicon.ico' }}'
+                            });
+                        } catch (e) {}
                     }
                 }
                 this.prevUnread = val;
@@ -182,7 +210,7 @@ new class extends Component {
     }"
     @keydown.escape.window="open = false"
     @click.outside="open = false"
-    wire:poll.{{ $this->pollInterval }}
+    @if ($this->pollInterval) wire:poll.visible.{{ $this->pollInterval }} @endif
     class="relative inline-block text-left"
 >
     <!-- Bell Trigger Button -->

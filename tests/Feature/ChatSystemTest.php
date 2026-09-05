@@ -3,8 +3,10 @@
 use App\Events\ChatMessageReadEvent;
 use App\Events\ChatMessageSentEvent;
 use App\Events\ChatMessageUpdatedEvent;
+use App\Events\ChatUserTypingEvent;
 use App\Events\WebRtcCallSignalEvent;
 use App\Models\ChatCall;
+use App\Models\ChatCallParticipant;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\ChatMessageStatus;
@@ -15,6 +17,7 @@ use App\Services\ChatService;
 use App\Services\RbacService;
 use App\Services\WebRtcCallService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -22,6 +25,11 @@ use Livewire\Livewire;
 beforeEach(function () {
     RbacService::seedDefaults();
     Storage::fake('local');
+
+    Config::set('broadcasting.default', 'reverb');
+    Config::set('broadcasting.connections.reverb.key', 'test-key');
+    Config::set('broadcasting.connections.reverb.secret', 'test-secret');
+    Config::set('broadcasting.connections.reverb.app_id', 'test-app-id');
 });
 
 test('ChatConversation model supports direct, group, and channel types with helper methods', function () {
@@ -475,4 +483,152 @@ test('Creating new group or channel with uploaded avatar stores display picture'
     $createdChannel = ChatConversation::where('title', 'Official Press Releases')->first();
     expect($createdChannel)->not->toBeNull();
     expect($createdChannel->avatar)->not->toBeNull();
+});
+
+test('Users can react to chat messages with emojis and toggle reactions', function () {
+    $user1 = User::factory()->create(['name' => 'Alice']);
+    $user2 = User::factory()->create(['name' => 'Bob']);
+    $user1->givePermissionTo('chat.access');
+
+    /** @var ChatService $chatService */
+    $chatService = app(ChatService::class);
+    $conv = $chatService->findOrCreateDirectConversation($user1, $user2);
+    $msg = $chatService->sendMessage($conv, $user2, 'Hello Alice!');
+
+    // Alice reacts with 👍
+    Livewire::actingAs($user1)
+        ->test('pages::portal.chat', ['conversation' => $conv->uuid])
+        ->call('toggleReaction', $msg->id, '👍')
+        ->assertHasNoErrors();
+
+    expect($msg->reactions()->where('emoji', '👍')->where('user_id', $user1->id)->exists())->toBeTrue();
+
+    // Alice un-reacts with 👍
+    Livewire::actingAs($user1)
+        ->test('pages::portal.chat', ['conversation' => $conv->uuid])
+        ->call('toggleReaction', $msg->id, '👍')
+        ->assertHasNoErrors();
+
+    expect($msg->reactions()->where('emoji', '👍')->where('user_id', $user1->id)->exists())->toBeFalse();
+});
+
+test('User can view profile and start direct message from member profile', function () {
+    $user1 = User::factory()->create(['name' => 'Alice']);
+    $user2 = User::factory()->create(['name' => 'Bob', 'phone' => '+919876543210']);
+    $user1->givePermissionTo('chat.access');
+
+    Livewire::actingAs($user1)
+        ->test('pages::portal.chat')
+        ->call('viewUserProfile', $user2->id)
+        ->assertSet('viewingUserProfile.id', $user2->id)
+        ->call('startDirectMessage', $user2->id)
+        ->assertHasNoErrors();
+
+    $conv = ChatConversation::where('type', ChatConversation::TYPE_DIRECT)->first();
+    expect($conv)->not->toBeNull();
+});
+
+test('Typing indicator broadcasts ChatUserTypingEvent with user metadata and respecting posting permissions', function () {
+    Event::fake([ChatUserTypingEvent::class]);
+
+    $user1 = User::factory()->create(['name' => 'Alice']);
+    $user2 = User::factory()->create(['name' => 'Bob']);
+    $user3 = User::factory()->create(['name' => 'Charlie']);
+
+    /** @var ChatService $chatService */
+    $chatService = app(ChatService::class);
+
+    // 1. Direct Conversation Typing
+    $direct = $chatService->findOrCreateDirectConversation($user1, $user2);
+    $sent = $chatService->broadcastTypingIndicator($direct, $user1, true);
+    expect($sent)->toBeTrue();
+
+    Event::assertDispatched(ChatUserTypingEvent::class, function ($event) use ($direct, $user1) {
+        return $event->conversationId === $direct->id
+            && $event->user->id === $user1->id
+            && $event->isTyping === true
+            && $event->user->name === 'Alice';
+    });
+
+    // 2. Broadcast-only Channel: Non-admin cannot broadcast typing
+    $channel = $chatService->createChannel($user1, 'News Channel', [$user2->id, $user3->id], isBroadcastOnly: true);
+    $adminSent = $chatService->broadcastTypingIndicator($channel, $user1, true);
+    expect($adminSent)->toBeTrue();
+
+    $memberSent = $chatService->broadcastTypingIndicator($channel, $user2, true);
+    expect($memberSent)->toBeFalse();
+});
+
+test('Livewire chat component dispatches typing indicator to conversation channel', function () {
+    Event::fake([ChatUserTypingEvent::class]);
+
+    $user1 = User::factory()->create(['name' => 'Alice']);
+    $user2 = User::factory()->create(['name' => 'Bob']);
+    $user1->givePermissionTo('chat.access');
+
+    /** @var ChatService $chatService */
+    $chatService = app(ChatService::class);
+    $conv = $chatService->findOrCreateDirectConversation($user1, $user2);
+
+    Livewire::actingAs($user1)
+        ->test('pages::portal.chat', ['conversation' => $conv->uuid])
+        ->call('sendTypingIndicator', true)
+        ->assertHasNoErrors();
+
+    Event::assertDispatched(ChatUserTypingEvent::class, function ($event) use ($conv, $user1) {
+        return $event->conversationId === $conv->id && $event->user->id === $user1->id && $event->isTyping === true;
+    });
+});
+
+test('Group audio and video calling supports multi-party concurrent initiation, join, and leave', function () {
+    Event::fake([WebRtcCallSignalEvent::class]);
+
+    $caller = User::factory()->create(['name' => 'Host Alice']);
+    $member1 = User::factory()->create(['name' => 'Member Bob']);
+    $member2 = User::factory()->create(['name' => 'Member Charlie']);
+
+    /** @var ChatService $chatService */
+    $chatService = app(ChatService::class);
+    $conv = $chatService->createGroupConversation($caller, 'Study Team', [$member1->id, $member2->id]);
+
+    /** @var WebRtcCallService $callService */
+    $callService = app(WebRtcCallService::class);
+
+    // 1. Host initiates group video call
+    $call = $callService->initiateGroupCall($caller, $conv, ChatCall::TYPE_VIDEO);
+    expect($call)->not->toBeNull();
+    expect($call->status)->toBe(ChatCall::STATUS_RINGING);
+    expect($call->participants()->count())->toBe(3);
+
+    // Caller should be marked as joined immediately
+    $callerPart = $call->participants()->where('user_id', $caller->id)->first();
+    expect($callerPart->status)->toBe(ChatCallParticipant::STATUS_JOINED);
+
+    // Other members should be ringing
+    $bobPart = $call->participants()->where('user_id', $member1->id)->first();
+    expect($bobPart->status)->toBe(ChatCallParticipant::STATUS_RINGING);
+
+    // 2. Bob joins group call
+    $joinedCall = $callService->joinGroupCall($call->uuid, $member1);
+    expect($joinedCall->status)->toBe(ChatCall::STATUS_CONNECTED);
+    $bobPart->refresh();
+    expect($bobPart->status)->toBe(ChatCallParticipant::STATUS_JOINED);
+
+    // 3. Charlie joins group call
+    $callService->joinGroupCall($call->uuid, $member2);
+    $member2Part = $call->participants()->where('user_id', $member2->id)->first();
+    expect($member2Part->status)->toBe(ChatCallParticipant::STATUS_JOINED);
+    expect($callService->getActiveGroupCall($conv->id)?->uuid)->toBe($call->uuid);
+
+    // 4. Bob leaves call - Call should remain active for Alice and Charlie
+    $callService->leaveCall($call->uuid, $member1);
+    $bobPart->refresh();
+    expect($bobPart->status)->toBe(ChatCallParticipant::STATUS_LEFT);
+    $call->refresh();
+    expect($call->status)->toBe(ChatCall::STATUS_CONNECTED);
+
+    // 5. Charlie leaves call - active participants count drops to 1, call ends
+    $callService->leaveCall($call->uuid, $member2);
+    $call->refresh();
+    expect($call->status)->toBe(ChatCall::STATUS_ENDED);
 });

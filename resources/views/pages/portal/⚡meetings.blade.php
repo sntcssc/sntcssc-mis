@@ -1224,7 +1224,54 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
             }
         @endphp
         <x-ui.modal name="share-meeting-modal" max-width="max-w-md" title="{{ __('Meeting Invitation & QR Access') }}">
-            <div class="space-y-5 text-center">
+            <div
+                x-data="{
+                    copiedInvite: false,
+                    copiedLink: false,
+                    copyText(text, isLink = false) {
+                        try {
+                            if (navigator.clipboard && window.isSecureContext) {
+                                navigator.clipboard.writeText(text).then(() => {
+                                    if (isLink) {
+                                        this.copiedLink = true;
+                                        setTimeout(() => this.copiedLink = false, 2000);
+                                    } else {
+                                        this.copiedInvite = true;
+                                        setTimeout(() => this.copiedInvite = false, 2000);
+                                    }
+                                }).catch(() => this.fallbackCopy(text, isLink));
+                            } else {
+                                this.fallbackCopy(text, isLink);
+                            }
+                        } catch (e) {
+                            this.fallbackCopy(text, isLink);
+                        }
+                    },
+                    fallbackCopy(text, isLink) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.top = '-9999px';
+                        ta.style.left = '-9999px';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        try {
+                            document.execCommand('copy');
+                            if (isLink) {
+                                this.copiedLink = true;
+                                setTimeout(() => this.copiedLink = false, 2000);
+                            } else {
+                                this.copiedInvite = true;
+                                setTimeout(() => this.copiedInvite = false, 2000);
+                            }
+                        } catch (err) {}
+                        document.body.removeChild(ta);
+                    }
+                }"
+                class="space-y-5 text-center"
+            >
                 <!-- QR Code Box -->
                 <div class="p-4 bg-white rounded-2xl border border-border shadow-xs inline-block mx-auto">
                     <div class="h-44 w-44 flex items-center justify-center mx-auto bg-slate-50 border border-slate-200 rounded-xl overflow-hidden p-2">
@@ -1256,8 +1303,8 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
                     @endif
                 </div>
 
-                <!-- Copy Link Bar -->
-                <div class="space-y-1.5 text-left">
+                <!-- Copy Link & Full Invitation Bar -->
+                <div class="space-y-2 text-left">
                     <label class="block text-xs font-semibold text-foreground">{{ __('Meeting Join Link') }}</label>
                     <div class="flex items-center gap-2">
                         <input
@@ -1267,12 +1314,22 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
                             class="flex-1 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs font-mono select-all outline-none"
                         />
                         <x-ui.button
-                            x-on:click="navigator.clipboard.writeText('{{ addslashes($shareText) }}'); copiedInvite = true; setTimeout(() => copiedInvite = false, 2000)"
+                            type="button"
+                            @click="copyText(@js($joinUrl), true)"
+                            variant="secondary"
+                            size="sm"
+                            icon="link"
+                        >
+                            <span x-text="copiedLink ? '{{ __('Copied!') }}' : '{{ __('Copy Link') }}'"></span>
+                        </x-ui.button>
+                        <x-ui.button
+                            type="button"
+                            @click="copyText(@js($shareText), false)"
                             variant="default"
                             size="sm"
                             icon="copy"
                         >
-                            <span x-text="copiedInvite ? '{{ __('Copied!') }}' : '{{ __('Copy') }}'"></span>
+                            <span x-text="copiedInvite ? '{{ __('Copied!') }}' : '{{ __('Copy Invite') }}'"></span>
                         </x-ui.button>
                     </div>
                 </div>

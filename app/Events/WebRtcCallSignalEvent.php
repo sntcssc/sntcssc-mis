@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 
 class WebRtcCallSignalEvent implements ShouldBroadcastNow
 {
@@ -24,7 +25,8 @@ class WebRtcCallSignalEvent implements ShouldBroadcastNow
         public int $recipientUserId,
         public int $senderUserId,
         public string $signalType,
-        public array $payload = []
+        public array $payload = [],
+        public ?string $signalId = null
     ) {}
 
     /**
@@ -34,10 +36,15 @@ class WebRtcCallSignalEvent implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel("user.{$this->recipientUserId}"),
+        $channels = [
             new PrivateChannel("call.{$this->callUuid}"),
         ];
+
+        if ($this->recipientUserId > 0) {
+            $channels[] = new PrivateChannel("user.{$this->recipientUserId}");
+        }
+
+        return $channels;
     }
 
     /**
@@ -55,12 +62,22 @@ class WebRtcCallSignalEvent implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
+        $id = $this->signalId ?: ($this->payload['id'] ?? ($this->payload['signal_id'] ?? ('sig_'.(string) Str::uuid())));
+
         return [
+            'id' => $id,
+            'signal_id' => $id,
+            'signalId' => $id,
             'call_uuid' => $this->callUuid,
+            'callUuid' => $this->callUuid,
             'recipient_user_id' => $this->recipientUserId,
+            'recipientUserId' => $this->recipientUserId,
             'sender_user_id' => $this->senderUserId,
+            'senderUserId' => $this->senderUserId,
             'signal_type' => $this->signalType,
-            'payload' => $this->payload,
+            'signalType' => $this->signalType,
+            'type' => $this->signalType,
+            'payload' => array_merge(['id' => $id, 'signal_id' => $id], $this->payload),
             'timestamp' => now()->toISOString(),
         ];
     }

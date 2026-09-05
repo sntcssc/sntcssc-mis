@@ -90,6 +90,18 @@ class ChatCall extends Model
         return $this->hasMany(ChatCallParticipant::class, 'call_id');
     }
 
+    public function activeParticipants(): HasMany
+    {
+        return $this->hasMany(ChatCallParticipant::class, 'call_id')
+            ->whereIn('status', [ChatCallParticipant::STATUS_JOINED, ChatCallParticipant::STATUS_RINGING]);
+    }
+
+    public function joinedParticipants(): HasMany
+    {
+        return $this->hasMany(ChatCallParticipant::class, 'call_id')
+            ->where('status', ChatCallParticipant::STATUS_JOINED);
+    }
+
     public function isAudio(): bool
     {
         return $this->type === self::TYPE_AUDIO;
@@ -98,6 +110,49 @@ class ChatCall extends Model
     public function isVideo(): bool
     {
         return $this->type === self::TYPE_VIDEO;
+    }
+
+    public function isConnected(): bool
+    {
+        return $this->status === self::STATUS_CONNECTED;
+    }
+
+    public function isRinging(): bool
+    {
+        return $this->status === self::STATUS_RINGING;
+    }
+
+    public function isInitiated(): bool
+    {
+        return $this->status === self::STATUS_INITIATED;
+    }
+
+    public function isEnded(): bool
+    {
+        return $this->status === self::STATUS_ENDED;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === self::STATUS_REJECTED;
+    }
+
+    public function isMissed(): bool
+    {
+        return $this->status === self::STATUS_MISSED;
+    }
+
+    public function isGroupCall(): bool
+    {
+        if (! empty($this->signal_data['is_group'])) {
+            return true;
+        }
+
+        if ($this->relationLoaded('conversation') && $this->conversation) {
+            return $this->conversation->isGroup();
+        }
+
+        return empty($this->receiver_id) && ! empty($this->conversation_id);
     }
 
     public function formattedDuration(): string

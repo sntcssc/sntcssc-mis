@@ -3,12 +3,17 @@
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
+use GuzzleHttp\Client as GuzzleClient;
+use Illuminate\Broadcasting\Broadcasters\NullBroadcaster;
+use Illuminate\Broadcasting\Broadcasters\PusherBroadcaster;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Pusher\Pusher;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,12 +32,46 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->registerBladeDirectives();
+        $this->registerBroadcasters();
 
         Gate::before(function ($user, $ability) {
 
             if ($user->hasRole('Super Administrator')) {
                 return true;
             }
+        });
+    }
+
+    /**
+     * Register resilient Reverb / WebSocket broadcasters with graceful fallback.
+     */
+    protected function registerBroadcasters(): void
+    {
+        Broadcast::extend('reverb', function ($app, $config) {
+            if (class_exists(Pusher::class)) {
+                $guzzleClient = new GuzzleClient(
+                    array_merge(
+                        [
+                            'connect_timeout' => 10,
+                            'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
+                            'timeout' => 30,
+                        ],
+                        $config['client_options'] ?? [],
+                    )
+                );
+
+                $pusher = new Pusher(
+                    $config['key'] ?? '',
+                    $config['secret'] ?? '',
+                    $config['app_id'] ?? '',
+                    $config['options'] ?? [],
+                    $guzzleClient,
+                );
+
+                return new PusherBroadcaster($pusher, $config['jsonp'] ?? false);
+            }
+
+            return new NullBroadcaster;
         });
     }
 

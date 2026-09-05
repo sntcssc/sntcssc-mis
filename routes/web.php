@@ -6,11 +6,29 @@ use App\Http\Controllers\Auth\OtpPasswordResetController;
 use App\Http\Controllers\Auth\OtpVerificationController;
 use App\Http\Controllers\ChatJoinController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MeetingJoinController;
+use App\Http\Controllers\MeetingSignalController;
 use App\Http\Controllers\Public\UnsubscribeController;
 use App\Http\Middleware\EnsureTeamMembership;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
+
+// Top-level /dashboard fallback route to redirect to the user's active team dashboard
+Route::get('dashboard', function (Request $request) {
+    $user = $request->user();
+    if (! $user) {
+        return redirect()->route('login');
+    }
+
+    $team = $user->currentTeam ?? $user->personalTeam() ?? $user->allTeams()->first();
+    if ($team) {
+        return redirect()->route('dashboard', ['current_team' => $team->slug]);
+    }
+
+    return redirect('/');
+})->middleware(['auth', 'verified'])->name('dashboard.redirect');
 
 Route::view('verify-otp', 'pages.auth.verify-otp')->name('verify-otp');
 
@@ -52,7 +70,9 @@ require __DIR__.'/settings.php';
 
 // Public & Direct Chat & Meeting Join via Invite Code
 Route::get('live-chat/join/{code}', [ChatJoinController::class, 'join'])->name('chat.join')->middleware(['auth']);
-Route::get('meetings/join/{code}', [ChatJoinController::class, 'joinMeeting'])->name('meetings.join')->middleware(['auth']);
+Route::get('meetings/join/{code}', [MeetingJoinController::class, 'join'])->name('meetings.join')->middleware(['auth']);
+Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal.direct')->middleware(['auth']);
+Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync.direct')->middleware(['auth']);
 
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
@@ -83,6 +103,8 @@ Route::prefix('{current_team}')
         // Dedicated Online Meetings & Video Conferencing
         Route::livewire('meetings', 'pages::portal.meetings')->name('meetings.index');
         Route::livewire('meetings/room/{uuid}', 'pages::portal.meeting-room')->name('meetings.room');
+        Route::post('meetings/{uuid}/signal', [MeetingSignalController::class, 'signal'])->name('meetings.signal');
+        Route::get('meetings/{uuid}/sync', [MeetingSignalController::class, 'sync'])->name('meetings.sync');
 
         // Admin Helpdesk Desk & Ticket Management
         Route::livewire('support/tickets', 'pages::admin.tickets')->name('admin.tickets.index')->middleware('can:tickets.view');
@@ -100,6 +122,7 @@ Route::prefix('{current_team}')
         Route::livewire('system/settings/sms', 'pages::admin.settings.sms')->name('admin.settings.sms')->middleware('can:settings.sms');
         Route::livewire('system/settings/notification', 'pages::admin.settings.notification')->name('admin.settings.notification')->middleware('can:settings.general');
         Route::livewire('system/settings/chat', 'pages::admin.settings.chat')->name('admin.settings.chat')->middleware('can:settings.general');
+        Route::livewire('system/settings/meetings', 'pages::admin.settings.meetings')->name('admin.settings.meetings')->middleware('can:settings.general');
         Route::livewire('system/settings/system', 'pages::admin.settings.system')->name('admin.settings.system')->middleware('can:settings.general');
         Route::livewire('system/settings/backup', 'pages::admin.settings.backup')->name('admin.settings.backup')->middleware('can:settings.backup');
 

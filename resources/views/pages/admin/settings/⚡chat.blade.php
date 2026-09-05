@@ -17,6 +17,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
         'channel_enabled' => true,
         'voice_call_enabled' => true,
         'video_call_enabled' => true,
+        'require_websocket_for_calls' => true,
         'meetings_enabled' => true,
         'meeting_max_duration_minutes' => 120,
         'transport_driver' => 'hybrid', // hybrid, polling, broadcasting
@@ -70,6 +71,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
             'form.channel_enabled' => ['boolean'],
             'form.voice_call_enabled' => ['boolean'],
             'form.video_call_enabled' => ['boolean'],
+            'form.require_websocket_for_calls' => ['boolean'],
             'form.meetings_enabled' => ['boolean'],
             'form.meeting_max_duration_minutes' => ['required', 'numeric', 'min:15', 'max:480'],
             'form.transport_driver' => ['required', 'string', 'in:hybrid,polling,broadcasting'],
@@ -98,8 +100,9 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
 
                     $type = match ($key) {
                         'enabled', 'direct_enabled', 'group_enabled', 'channel_enabled',
-                        'voice_call_enabled', 'video_call_enabled', 'notify_email',
-                        'notify_sms', 'notify_whatsapp', 'notify_telegram', 'sound_enabled' => Setting::TYPE_BOOLEAN,
+                        'voice_call_enabled', 'video_call_enabled', 'require_websocket_for_calls',
+                        'meetings_enabled', 'notify_email', 'notify_sms', 'notify_whatsapp',
+                        'notify_telegram', 'sound_enabled' => Setting::TYPE_BOOLEAN,
                         'webrtc_turn_credential' => Setting::TYPE_SECRET,
                         'max_file_size_mb', 'edit_time_limit_minutes' => Setting::TYPE_NUMBER,
                         'transport_driver', 'poll_interval', 'webrtc_signaling_driver' => Setting::TYPE_SELECT,
@@ -144,6 +147,16 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
             Log::error('Failed to save chat settings: ' . $e->getMessage(), ['exception' => $e]);
             Toast::dispatch($this, 'error', __('Failed to save settings: :error', ['error' => $e->getMessage()]));
         }
+    }
+
+    public function with(): array
+    {
+        /** @var \App\Services\WebRtcCallService $callService */
+        $callService = app(\App\Services\WebRtcCallService::class);
+
+        return [
+            'realtimeStatus' => $callService->getRealtimeStatus(),
+        ];
     }
 };
 ?>
@@ -261,7 +274,24 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
                     </div>
                     <x-ui.switch wire:model.live="form.meetings_enabled" />
                 </div>
-                <p class="text-[11px] text-muted-foreground">{{ __('Dedicated instant & scheduled meetings.') }}</p>
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-[11px] text-muted-foreground">{{ __('Dedicated instant & scheduled meetings.') }}</p>
+                    <a href="{{ route('admin.settings.meetings') }}" wire:navigate class="text-[11px] font-medium text-primary hover:underline shrink-0">
+                        {{ __('Settings') }} &rarr;
+                    </a>
+                </div>
+            </div>
+
+            <!-- Require Active WebSocket for Calling -->
+            <div class="p-3.5 rounded-xl border border-border {{ $form['require_websocket_for_calls'] ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-background' }} flex flex-col justify-between gap-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <x-icon name="wifi" class="h-4 w-4 text-emerald-500" />
+                        <span class="text-xs font-semibold text-foreground">{{ __('Require WebSockets for Calling') }}</span>
+                    </div>
+                    <x-ui.switch wire:model.live="form.require_websocket_for_calls" />
+                </div>
+                <p class="text-[11px] text-muted-foreground">{{ __('Disable voice/video calling buttons when WebSocket connection is offline.') }}</p>
             </div>
         </div>
     </div>
@@ -275,6 +305,35 @@ new #[Layout('layouts.app')] #[Title('Live Chat & WebRTC Call Settings')] class 
             <div>
                 <h2 class="text-base font-semibold text-foreground">{{ __('Realtime Transport Engine & Signaling Driver') }}</h2>
                 <p class="text-xs text-muted-foreground">{{ __('Configure how chat messages, delivery ticks, typing events, and WebRTC peer signals are delivered.') }}</p>
+            </div>
+        </div>
+
+        <!-- WebSocket Diagnostic Banner -->
+        <div class="p-4 rounded-xl border {{ $realtimeStatus['supported'] ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-amber-500/5 border-amber-500/30' }} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="p-2 rounded-lg {{ $realtimeStatus['supported'] ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400' }} shrink-0">
+                    <x-icon :name="$realtimeStatus['supported'] ? 'check-circle' : 'alert-triangle'" class="h-5 w-5" />
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-sm font-bold text-foreground">
+                            {{ $realtimeStatus['supported'] ? __('Laravel Reverb WebSocket Server Configured') : __('WebSocket Configuration Incomplete') }}
+                        </h3>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider {{ $realtimeStatus['supported'] ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/20 text-amber-700 dark:text-amber-300' }}">
+                            {{ strtoupper($realtimeStatus['driver']) }}
+                        </span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        @if ($realtimeStatus['supported'])
+                            {{ __('Broadcasting driver is active on :scheme://:host::port with authenticated WebRTC channel support.', ['scheme' => $realtimeStatus['scheme'], 'host' => $realtimeStatus['host'], 'port' => $realtimeStatus['port']]) }}
+                        @else
+                            {{ $realtimeStatus['reason'] ?? __('Broadcasting driver credentials are not configured in your .env file.') }}
+                        @endif
+                    </p>
+                </div>
+            </div>
+            <div class="text-right shrink-0">
+                <code class="text-[11px] px-2.5 py-1 rounded bg-secondary text-foreground font-mono">php artisan reverb:start</code>
             </div>
         </div>
 

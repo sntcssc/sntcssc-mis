@@ -52,9 +52,16 @@ class ChatUserTypingEvent implements ShouldBroadcastNow
     {
         return [
             'conversation_id' => $this->conversationId,
+            'conversationId' => $this->conversationId,
             'user_id' => $this->user->id,
+            'userId' => $this->user->id,
             'user_name' => $this->user->name,
+            'userName' => $this->user->name,
+            'user_avatar' => $this->user->avatarUrl(),
+            'userAvatar' => $this->user->avatarUrl(),
             'is_typing' => $this->isTyping,
+            'isTyping' => $this->isTyping,
+            'timestamp' => now()->toISOString(),
         ];
     }
 }

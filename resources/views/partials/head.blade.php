@@ -18,6 +18,32 @@
 
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="csrf-token" content="{{ csrf_token() }}" />
+@php
+    $broadcastDriver = config('broadcasting.default');
+    $reverbKey = config('broadcasting.connections.reverb.key');
+    $reverbHost = config('broadcasting.connections.reverb.options.host');
+    if (($reverbHost === 'localhost' || $reverbHost === '127.0.0.1') && request()->getHost() && ! in_array(request()->getHost(), ['localhost', '127.0.0.1', '::1'], true)) {
+        $reverbHost = request()->getHost();
+    }
+    $reverbPort = config('broadcasting.connections.reverb.options.port', 8080);
+    $reverbScheme = config('broadcasting.connections.reverb.options.scheme', 'http');
+    $pusherKey = config('broadcasting.connections.pusher.key');
+    $pusherCluster = config('broadcasting.connections.pusher.options.cluster', 'mt1');
+    $pusherScheme = config('broadcasting.connections.pusher.options.scheme', 'https');
+@endphp
+<meta name="broadcast-driver" content="{{ $broadcastDriver }}" />
+@if ($reverbKey)
+<meta name="reverb-key" content="{{ $reverbKey }}" />
+<meta name="reverb-host" content="{{ $reverbHost }}" />
+<meta name="reverb-port" content="{{ $reverbPort }}" />
+<meta name="reverb-scheme" content="{{ $reverbScheme }}" />
+@endif
+@if ($pusherKey)
+<meta name="pusher-key" content="{{ $pusherKey }}" />
+<meta name="pusher-cluster" content="{{ $pusherCluster }}" />
+<meta name="pusher-scheme" content="{{ $pusherScheme }}" />
+@endif
 
 <title>
     {{ filled($title ?? null) ? $title.' - '.$pageTitleSuffix : $pageTitleSuffix }}

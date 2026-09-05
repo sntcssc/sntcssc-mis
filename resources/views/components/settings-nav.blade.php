@@ -54,6 +54,11 @@
             'icon' => 'message-square',
             'route' => 'admin.settings.chat',
         ],
+        'meetings' => [
+            'label' => __('Online Meetings'),
+            'icon' => 'video',
+            'route' => 'admin.settings.meetings',
+        ],
         'system' => [
             'label' => __('System'),
             'icon' => 'cpu',

@@ -16,7 +16,9 @@ use App\Support\Toast;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -28,7 +30,8 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     // Active Selection
     #[Url(as: 'c')]
     public ?string $activeConversationUuid = null;
-    public ?int $activeConversationId = null;
+    public int $activeConversationId = 0;
+    public int $currentUserId = 0;
 
     // Filtering & Search
     public string $search = '';
@@ -67,6 +70,9 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     public bool $channelIsBroadcastOnly = true;
     public array $channelSelectedMembers = [];
     public $channelAvatar = null;
+    public ?string $newGroupAvatarPath = null;
+    public ?string $newChannelAvatarPath = null;
+    public ?string $newEditAvatarPath = null;
 
     public array $addMemberSelectedIds = [];
 
@@ -79,8 +85,14 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     public bool $removeAvatar = false;
     public $directAvatarUpload = null;
 
-    public function mount(): void
+    // User Profile View State
+    public ?User $viewingUserProfile = null;
+    public bool $soundMuted = false;
+
+    public function mount(?string $conversation = null, ?string $c = null): void
     {
+        $this->currentUserId = auth()->id();
+
         $chatEnabled = (bool) Setting::get('chat.enabled', true);
         if (! $chatEnabled && ! auth()->user()?->hasRole('Super Administrator')) {
             abort(403, __('Live chat is currently disabled by administrator.'));
@@ -88,12 +100,15 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
         $this->touchUserOnline();
 
-        if ($this->activeConversationUuid) {
-            $conv = ChatConversation::where('uuid', $this->activeConversationUuid)
+        $targetUuid = $conversation ?? $c ?? $this->activeConversationUuid ?? request()->query('conversation') ?? request()->query('c');
+
+        if ($targetUuid) {
+            $conv = ChatConversation::where('uuid', $targetUuid)
                 ->forUser(auth()->id())
                 ->first();
             if ($conv) {
                 $this->activeConversationId = $conv->id;
+                $this->activeConversationUuid = $conv->uuid;
                 $this->loadGroupEditState($conv);
                 $this->markActiveAsRead();
             }
@@ -225,6 +240,79 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         $this->replyingToMessage = null;
     }
 
+    #[On('echo-private:user.{currentUserId},.ChatMessageSent')]
+    #[On('echo-private:user.{currentUserId},ChatMessageSent')]
+    public function onUserIncomingChatMessage(array $event = []): void
+    {
+        $conversationId = (int) ($event['conversation_id'] ?? 0);
+        if ($conversationId > 0 && $conversationId === (int) $this->activeConversationId) {
+            $this->markActiveAsRead();
+            $this->dispatch('chat-scrolled-to-bottom');
+        }
+    }
+
+    #[On('echo-private:conversation.{activeConversationId},.ChatMessageSent')]
+    #[On('echo-private:conversation.{activeConversationId},ChatMessageSent')]
+    public function onConversationChatMessage(array $event = []): void
+    {
+        $this->markActiveAsRead();
+        $this->dispatch('chat-scrolled-to-bottom');
+    }
+
+    #[On('echo-private:conversation.{activeConversationId},.ChatMessageUpdatedEvent')]
+    #[On('echo-private:conversation.{activeConversationId},ChatMessageUpdatedEvent')]
+    #[On('echo-private:conversation.{activeConversationId},.ChatMessageUpdated')]
+    #[On('echo-private:conversation.{activeConversationId},ChatMessageUpdated')]
+    public function onConversationMessageUpdated(array $event = []): void
+    {
+        // Auto-refreshes message feed
+    }
+
+    #[On('echo-private:conversation.{activeConversationId},.ChatMessageReadEvent')]
+    #[On('echo-private:conversation.{activeConversationId},ChatMessageReadEvent')]
+    #[On('echo-private:conversation.{activeConversationId},.ChatMessageRead')]
+    #[On('echo-private:conversation.{activeConversationId},ChatMessageRead')]
+    public function onConversationMessageRead(array $event = []): void
+    {
+        // Read ticks auto-updated
+    }
+
+    #[On('echo-private:conversation.{activeConversationId},.ChatUserTypingEvent')]
+    #[On('echo-private:conversation.{activeConversationId},ChatUserTypingEvent')]
+    #[On('echo-private:conversation.{activeConversationId},.ChatUserTyping')]
+    #[On('echo-private:conversation.{activeConversationId},ChatUserTyping')]
+    public function onChatUserTyping(array $event = []): void
+    {
+        $this->dispatch('chat-typing-received', $event);
+    }
+
+    public function sendTypingIndicator(bool $isTyping = true): void
+    {
+        $user = auth()->user();
+        if (! $user || ! $this->activeConversationId) {
+            return;
+        }
+
+        $conv = ChatConversation::find($this->activeConversationId);
+        if ($conv) {
+            /** @var ChatService $chatService */
+            $chatService = app(ChatService::class);
+            $chatService->broadcastTypingIndicator($conv, $user, $isTyping);
+        }
+    }
+
+    #[Computed]
+    public function activeGroupCall(): ?ChatCall
+    {
+        if (! $this->activeConversationId) {
+            return null;
+        }
+
+        /** @var WebRtcCallService $callService */
+        $callService = app(WebRtcCallService::class);
+        return $callService->getActiveGroupCall($this->activeConversationId);
+    }
+
     public function startEdit(int $messageId): void
     {
         $msg = ChatMessage::find($messageId);
@@ -260,6 +348,54 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     {
         $this->editingMessageId = null;
         $this->editingText = '';
+    }
+
+    public function toggleMute(): void
+    {
+        $this->soundMuted = ! $this->soundMuted;
+    }
+
+    public function toggleReaction(int $messageId, string $emoji): void
+    {
+        $this->touchUserOnline();
+        $msg = ChatMessage::find($messageId);
+        $user = auth()->user();
+        if ($msg && $user) {
+            /** @var ChatService $chatService */
+            $chatService = app(ChatService::class);
+            $chatService->toggleReaction($msg, $user, $emoji);
+        }
+    }
+
+    public function viewUserProfile(int $userId): void
+    {
+        $this->viewingUserProfile = User::find($userId);
+        $this->js("\$store.modals.open('user-profile-modal')");
+    }
+
+    public function startDirectMessage(int $userId): void
+    {
+        $user = auth()->user();
+        $target = User::find($userId);
+        if (! $user || ! $target || (int) $user->id === (int) $target->id) {
+            return;
+        }
+
+        /** @var ChatService $chatService */
+        $chatService = app(ChatService::class);
+        try {
+            $conv = $chatService->findOrCreateDirectConversation($user, $target);
+            $this->activeConversationUuid = $conv->uuid;
+            $this->activeConversationId = $conv->id;
+            $this->loadGroupEditState($conv);
+            $this->markActiveAsRead();
+            $this->js("\$store.modals.close('user-profile-modal')");
+            $this->showInfoDrawer = false;
+            $this->dispatch('chat-scrolled-to-bottom');
+            Toast::dispatch($this, 'success', __('Direct conversation opened.'));
+        } catch (\Throwable $e) {
+            Toast::dispatch($this, 'error', $e->getMessage());
+        }
     }
 
     /* ----------------------------------------------------------------- *
@@ -344,32 +480,88 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
     public function promptCall(string $callType, bool $isGroup = false): void
     {
+        $callType = in_array(strtolower($callType), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
         $this->pendingCallType = $callType;
         $this->isPendingGroupCall = $isGroup;
-        $this->js("\$store.modals.open('call-confirm-modal')");
-    }
 
-    public function launchConfirmedCall(): void
-    {
+        $requireWebsocket = (bool) Setting::get('chat.require_websocket_for_calls', true);
+        /** @var WebRtcCallService $webrtcService */
+        $webrtcService = app(WebRtcCallService::class);
+
+        if ($requireWebsocket && ! $webrtcService->isRealtimeSupported()) {
+            Toast::dispatch($this, 'warning', __('Real-time voice and video calling requires an active WebSocket connection. Please configure Laravel Reverb in your system environment.'));
+            return;
+        }
+
         $conv = ChatConversation::find($this->activeConversationId);
         $user = auth()->user();
+        if (! $conv || ! $user) {
+            return;
+        }
 
-        $this->js("\$store.modals.close('call-confirm-modal')");
+        $other = $conv->isDirect() ? $conv->otherParticipant($user) : null;
+        $peerName = $conv->isDirect() ? ($other?->name ?? __('Participant')) : $conv->title;
+        $peerAvatar = $conv->isDirect() ? $other?->avatarUrl() : null;
+        $targetUserId = $other?->id;
+
+        $this->dispatch('open-pre-call-preview', [
+            'callType' => $callType,
+            'isGroup' => $isGroup,
+            'peerName' => $peerName,
+            'peerAvatar' => $peerAvatar,
+            'targetUserId' => $targetUserId,
+            'conversationId' => $conv->id,
+        ]);
+    }
+
+    public function launchConfirmedCall(int $receiverId, string $type = 'video', ?int $conversationId = null, bool $startMuted = false, bool $startVideoOff = false): void
+    {
+        $type = in_array(strtolower($type), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
+        $requireWebsocket = (bool) Setting::get('chat.require_websocket_for_calls', true);
+        /** @var WebRtcCallService $webrtcService */
+        $webrtcService = app(WebRtcCallService::class);
+
+        if ($requireWebsocket && ! $webrtcService->isRealtimeSupported()) {
+            Toast::dispatch($this, 'warning', __('Real-time voice and video calling requires an active WebSocket connection. Please configure Laravel Reverb in your system environment.'));
+            return;
+        }
+
+        $conv = ChatConversation::find($conversationId ?: $this->activeConversationId);
+        $user = auth()->user();
 
         if (! $conv || ! $user) {
             return;
         }
 
-        if ($conv->isDirect()) {
-            $other = $conv->otherParticipant($user);
-            if (! $other) {
-                Toast::dispatch($this, 'warning', __('Cannot find recipient for this direct call.'));
-                return;
-            }
-            $this->dispatch('start-call', receiverId: $other->id, type: $this->pendingCallType, conversationId: $conv->id);
-        } else {
-            $this->dispatch('start-group-call', conversationId: $conv->id, type: $this->pendingCallType);
+        $other = User::find($receiverId) ?: $conv->otherParticipant($user);
+        if (! $other) {
+            Toast::dispatch($this, 'warning', __('Cannot find recipient for this direct call.'));
+            return;
         }
+
+        $this->dispatch('start-call', receiverId: $other->id, type: $type, conversationId: $conv->id, startMuted: $startMuted, startVideoOff: $type === 'audio' ? true : $startVideoOff);
+    }
+
+    public function launchConfirmedGroupCall(int $conversationId, string $type = 'video', bool $startMuted = false, bool $startVideoOff = false): void
+    {
+        $type = in_array(strtolower($type), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
+        $requireWebsocket = (bool) Setting::get('chat.require_websocket_for_calls', true);
+        /** @var WebRtcCallService $webrtcService */
+        $webrtcService = app(WebRtcCallService::class);
+
+        if ($requireWebsocket && ! $webrtcService->isRealtimeSupported()) {
+            Toast::dispatch($this, 'warning', __('Real-time voice and video calling requires an active WebSocket connection. Please configure Laravel Reverb in your system environment.'));
+            return;
+        }
+
+        $conv = ChatConversation::find($conversationId ?: $this->activeConversationId);
+        $user = auth()->user();
+
+        if (! $conv || ! $user) {
+            return;
+        }
+
+        $this->dispatch('start-group-call', conversationId: $conv->id, type: $type, startMuted: $startMuted, startVideoOff: $type === 'audio' ? true : $startVideoOff);
     }
 
     /* ----------------------------------------------------------------- *
@@ -403,7 +595,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         ]);
 
         $currentUser = auth()->user();
-        $avatarPath = $this->groupAvatar ? FileUploadService::upload($this->groupAvatar, 'chat/avatars') : null;
+        $avatarPath = $this->newGroupAvatarPath ?: ($this->groupAvatar ? FileUploadService::upload($this->groupAvatar, 'chat/avatars') : null);
 
         /** @var ChatService $chatService */
         $chatService = app(ChatService::class);
@@ -419,6 +611,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         $this->groupDescription = '';
         $this->groupSelectedMembers = [];
         $this->groupAvatar = null;
+        $this->newGroupAvatarPath = null;
 
         $this->js("\$store.modals.close('new-group-modal')");
         $this->selectConversation($conv->uuid);
@@ -434,7 +627,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         ]);
 
         $currentUser = auth()->user();
-        $avatarPath = $this->channelAvatar ? FileUploadService::upload($this->channelAvatar, 'chat/avatars') : null;
+        $avatarPath = $this->newChannelAvatarPath ?: ($this->channelAvatar ? FileUploadService::upload($this->channelAvatar, 'chat/avatars') : null);
 
         /** @var ChatService $chatService */
         $chatService = app(ChatService::class);
@@ -451,6 +644,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         $this->channelDescription = '';
         $this->channelSelectedMembers = [];
         $this->channelAvatar = null;
+        $this->newChannelAvatarPath = null;
 
         $this->js("\$store.modals.close('new-channel-modal')");
         $this->selectConversation($conv->uuid);
@@ -461,6 +655,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     {
         $this->removeAvatar = true;
         $this->editAvatar = null;
+        $this->newEditAvatarPath = null;
     }
 
     public function updatedDirectAvatarUpload(): void
@@ -540,6 +735,8 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         $avatarPath = $conv->avatar;
         if ($this->removeAvatar) {
             $avatarPath = null;
+        } elseif ($this->newEditAvatarPath) {
+            $avatarPath = $this->newEditAvatarPath;
         } elseif ($this->editAvatar) {
             $avatarPath = FileUploadService::upload($this->editAvatar, 'chat/avatars');
         }
@@ -565,8 +762,90 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
         $this->editAvatar = null;
         $this->removeAvatar = false;
+        $this->newEditAvatarPath = null;
         $this->js("\$store.modals.close('edit-group-modal')");
         Toast::dispatch($this, 'success', __('Conversation profile updated!'));
+    }
+
+    public function saveBase64Avatar(string $target, string $base64Data): void
+    {
+        try {
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $type)) {
+                $data = substr($base64Data, strpos($base64Data, ',') + 1);
+                $type = strtolower($type[1]);
+                $data = base64_decode($data);
+
+                if ($data === false) {
+                    throw new \Exception('Invalid base64 image data');
+                }
+
+                $filename = 'avatar_' . uniqid() . '.' . ($type === 'jpeg' ? 'jpg' : ($type ?: 'png'));
+                $path = 'chat/avatars/' . $filename;
+                \Illuminate\Support\Facades\Storage::disk('public')->put($path, $data);
+
+                $currentUser = auth()->user();
+
+                if ($target === 'direct' && $this->activeConversationId) {
+                    $conv = ChatConversation::find($this->activeConversationId);
+                    if ($conv && $conv->canModifyProfile($currentUser)) {
+                        $conv->update(['avatar' => $path, 'updated_by' => $currentUser->id]);
+                        Toast::dispatch($this, 'success', __('Profile picture updated successfully!'));
+                    }
+                } elseif ($target === 'edit') {
+                    $this->newEditAvatarPath = $path;
+                    $this->removeAvatar = false;
+                    Toast::dispatch($this, 'success', __('Image edited and ready to save.'));
+                } elseif ($target === 'group') {
+                    $this->newGroupAvatarPath = $path;
+                    Toast::dispatch($this, 'success', __('Image cropped and ready.'));
+                } elseif ($target === 'channel') {
+                    $this->newChannelAvatarPath = $path;
+                    Toast::dispatch($this, 'success', __('Image cropped and ready.'));
+                }
+            }
+        } catch (\Throwable $e) {
+            Toast::dispatch($this, 'error', __('Failed to process image: :err', ['err' => $e->getMessage()]));
+        }
+    }
+
+    public function saveBase64Attachment(string $base64Data, string $filename = 'image.png'): void
+    {
+        try {
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $type)) {
+                $data = substr($base64Data, strpos($base64Data, ',') + 1);
+                $type = strtolower($type[1]);
+                $data = base64_decode($data);
+
+                if ($data === false) {
+                    return;
+                }
+
+                $ext = $type === 'jpeg' ? 'jpg' : ($type ?: 'png');
+                $tempPath = tempnam(sys_get_temp_dir(), 'chat_att_') . '.' . $ext;
+                file_put_contents($tempPath, $data);
+
+                $uploadedFile = new \Illuminate\Http\UploadedFile(
+                    $tempPath,
+                    $filename ?: ('edited_image_' . time() . '.' . $ext),
+                    'image/' . $type,
+                    null,
+                    true
+                );
+
+                $this->attachments[] = $uploadedFile;
+                Toast::dispatch($this, 'success', __('Edited image added to attachments.'));
+            }
+        } catch (\Throwable $e) {
+            // handle error
+        }
+    }
+
+    public function removeAttachment(int $index): void
+    {
+        if (isset($this->attachments[$index])) {
+            unset($this->attachments[$index]);
+            $this->attachments = array_values($this->attachments);
+        }
     }
 
     public function addMembers(): void
@@ -719,7 +998,14 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             ->limit(20)
             ->get();
 
-        $pollInterval = (string) Setting::get('chat.poll_interval', '3s');
+        $transportDriver = (string) Setting::get('chat.transport_driver', 'hybrid');
+        if ($transportDriver === 'broadcasting') {
+            $pollInterval = null; // No polling overhead in pure broadcasting mode
+        } elseif ($transportDriver === 'hybrid') {
+            $pollInterval = '20s'; // Relaxed safety heartbeat in hybrid mode
+        } else {
+            $pollInterval = (string) Setting::get('chat.poll_interval', '4s'); // Active polling in polling mode
+        }
 
         return [
             'conversations' => $conversations,
@@ -731,75 +1017,27 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             'newChatUsers' => $newChatUsers,
             'pollInterval' => $pollInterval,
             'currentUser' => $user,
+            'voiceCallEnabled' => (bool) Setting::get('chat.voice_call_enabled', true),
+            'videoCallEnabled' => (bool) Setting::get('chat.video_call_enabled', true),
+            'requireWebsocketForCalls' => (bool) Setting::get('chat.require_websocket_for_calls', true),
+            'isRealtimeSupported' => app(WebRtcCallService::class)->isRealtimeSupported(),
         ];
     }
 };
 ?>
 
 <div
-    wire:poll.{{ $pollInterval }}="markActiveAsRead"
+    id="chat-root-container"
+    @if ($pollInterval) wire:poll.visible.{{ $pollInterval }}="markActiveAsRead" @endif
+    x-data="chatAlpine({
+        currentUserId: {{ (int) (auth()->id() ?? 0) }},
+        currentUserName: {{ json_encode(auth()->user()?->name ?? 'User') }},
+        currentUserAvatar: {{ json_encode(auth()->user()?->avatarUrl() ?? null) }},
+        activeConversationId: {{ (int) ($activeConversationId ?? 0) }}
+    })"
+    x-init="$watch('activeConversationId', (val) => { if (val) subscribeConversationEcho(val); })"
+    x-bind:class="isFullscreen ? '!fixed !inset-0 !h-screen !w-screen !z-50 !rounded-none !border-0' : ''"
     class="flex h-[calc(100vh-8.5rem)] min-h-[550px] rounded-2xl border border-border bg-card shadow-sm overflow-hidden relative"
-    x-data="{
-        mobileSidebarOpen: true,
-        showEmojiPicker: false,
-        highlightedMessageId: null,
-        copiedInvite: false,
-
-        previewModal: {
-            open: false,
-            url: '',
-            name: '',
-            type: 'image',
-            size: '',
-            isPdf: false,
-        },
-
-        openFilePreview(url, name, type, size, isPdf = false) {
-            this.previewModal.open = true;
-            this.previewModal.url = url;
-            this.previewModal.name = name;
-            this.previewModal.type = type;
-            this.previewModal.size = size;
-            this.previewModal.isPdf = isPdf;
-        },
-
-        closeFilePreview() {
-            this.previewModal.open = false;
-            this.previewModal.url = '';
-        },
-
-        scrollToBottom() {
-            this.$nextTick(() => {
-                const container = this.$refs.messagesContainer;
-                if (container) {
-                    container.scrollTop = container.scrollHeight;
-                }
-            });
-        },
-
-        scrollToMessage(id) {
-            const el = document.getElementById('msg-' + id);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                this.highlightedMessageId = id;
-                setTimeout(() => {
-                    this.highlightedMessageId = null;
-                }, 2500);
-            }
-        },
-
-        insertEmoji(emoji) {
-            $wire.messageText += emoji;
-            this.showEmojiPicker = false;
-        }
-    }"
-    x-init="
-        scrollToBottom();
-        window.addEventListener('chat-scrolled-to-bottom', () => scrollToBottom());
-        window.addEventListener('focus-composer', () => {
-            $nextTick(() => $refs.composerInput?.focus());
-        });
-    "
 >
     <!-- Left Sidebar: Conversations Master List -->
     <div
@@ -1010,7 +1248,18 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         <h3 class="text-sm font-bold text-foreground truncate">
                             {{ $activeConversation->displayNameFor($currentUser) }}
                         </h3>
-                        <p class="text-[11px] text-muted-foreground truncate">
+                        <!-- Real-time Typing Indicator in Header -->
+                        <div x-show="typingCount > 0" class="text-[11px] text-primary font-medium flex items-center gap-1.5 animate-pulse" x-cloak>
+                            <span class="flex gap-0.5 items-center">
+                                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce"></span>
+                                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.15s]"></span>
+                                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.3s]"></span>
+                            </span>
+                            <span x-text="typingText"></span>
+                        </div>
+
+                        <!-- Regular Status when nobody is typing -->
+                        <p x-show="typingCount === 0" class="text-[11px] text-muted-foreground truncate">
                             @if ($activeConversation->isDirect() && $directPeerUser)
                                 <span class="{{ $directPeerUser->isOnline() ? 'text-emerald-500 font-semibold' : 'text-muted-foreground' }}">
                                     {{ $directPeerUser->lastSeenText() }}
@@ -1025,25 +1274,101 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 </div>
 
                 <!-- Call & Options Actions -->
-                <div class="flex items-center gap-1 sm:gap-2">
-                    <!-- Voice Call Button (with Confirmation Modal) -->
+                <div class="flex items-center gap-1 sm:gap-1.5">
+                    <!-- Live WebSocket Status Indicator -->
+                    <div
+                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all"
+                        :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'"
+                        :title="$store.websocket && $store.websocket.connected ? '{{ __('WebSocket Connected (Laravel Reverb)') }}' : '{{ __('WebSocket Disconnected') }}'"
+                    >
+                        <span class="relative flex h-2 w-2">
+                            <span x-show="$store.websocket && $store.websocket.connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2" :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                        </span>
+                        <span x-text="$store.websocket && $store.websocket.connected ? '{{ __('Live') }}' : '{{ __('Offline') }}'"></span>
+                    </div>
+
+                    <!-- Sound Notification Toggle -->
                     <button
                         type="button"
-                        wire:click="promptCall('audio', {{ $activeConversation->isDirect() ? 'false' : 'true' }})"
+                        wire:click="toggleMute"
                         class="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                        title="{{ $activeConversation->isDirect() ? __('Voice Call') : __('Group Voice Call') }}"
+                        title="{{ $soundMuted ? __('Unmute notification sound') : __('Mute notification sound') }}"
                     >
-                        <x-icon name="phone" class="h-4 w-4" />
+                        <x-icon :name="$soundMuted ? 'volume-x' : 'volume-2'" class="h-4 w-4 {{ $soundMuted ? 'text-rose-400' : 'text-muted-foreground' }}" />
                     </button>
 
-                    <!-- Video Call Button (with Confirmation Modal) -->
+                    <!-- Voice Call Button (Active only when WebSocket connected) -->
+                    @if ($voiceCallEnabled)
+                        <button
+                            type="button"
+                            @click="if ($store.websocket && !$store.websocket.connected) {
+                                $store.toasts?.add('warning', '{{ __('Real-time voice calling requires an active WebSocket connection. Reconnecting...') }}');
+                                $store.websocket?.reconnect();
+                                return;
+                            } $dispatch('open-pre-call-preview', {
+                                callType: 'audio',
+                                isGroup: {{ $activeConversation->isDirect() ? 'false' : 'true' }},
+                                peerName: @js($activeConversation->isDirect() ? ($activeConversation->otherParticipant(auth()->user())?->name ?? __('Participant')) : $activeConversation->title),
+                                peerAvatar: @js($activeConversation->isDirect() ? $activeConversation->otherParticipant(auth()->user())?->avatarUrl() : null),
+                                targetUserId: {{ (int) ($activeConversation->isDirect() ? ($activeConversation->otherParticipant(auth()->user())?->id ?? 0) : 0) }},
+                                conversationId: {{ (int) $activeConversation->id }}
+                            })"
+                            class="p-2 rounded-lg transition-colors cursor-pointer"
+                            :class="$store.websocket && $store.websocket.connected ? 'text-muted-foreground hover:text-foreground hover:bg-secondary' : 'opacity-40 text-muted-foreground/60 hover:bg-transparent'"
+                            :title="$store.websocket && $store.websocket.connected ? '{{ $activeConversation->isDirect() ? __('Voice Call') : __('Group Voice Call') }}' : '{{ __('Voice calling requires an active WebSocket connection') }}'"
+                        >
+                            <x-icon name="phone" class="h-4 w-4" />
+                        </button>
+                    @endif
+
+                    <!-- Video Call Button (Active only when WebSocket connected) -->
+                    @if ($videoCallEnabled)
+                        <button
+                            type="button"
+                            @click="if ($store.websocket && !$store.websocket.connected) {
+                                $store.toasts?.add('warning', '{{ __('Real-time video calling requires an active WebSocket connection. Reconnecting...') }}');
+                                $store.websocket?.reconnect();
+                                return;
+                            } $dispatch('open-pre-call-preview', {
+                                callType: 'video',
+                                isGroup: {{ $activeConversation->isDirect() ? 'false' : 'true' }},
+                                peerName: @js($activeConversation->isDirect() ? ($activeConversation->otherParticipant(auth()->user())?->name ?? __('Participant')) : $activeConversation->title),
+                                peerAvatar: @js($activeConversation->isDirect() ? $activeConversation->otherParticipant(auth()->user())?->avatarUrl() : null),
+                                targetUserId: {{ (int) ($activeConversation->isDirect() ? ($activeConversation->otherParticipant(auth()->user())?->id ?? 0) : 0) }},
+                                conversationId: {{ (int) $activeConversation->id }}
+                            })"
+                            class="p-2 rounded-lg transition-colors cursor-pointer"
+                            :class="$store.websocket && $store.websocket.connected ? 'text-muted-foreground hover:text-foreground hover:bg-secondary' : 'opacity-40 text-muted-foreground/60 hover:bg-transparent'"
+                            :title="$store.websocket && $store.websocket.connected ? '{{ $activeConversation->isDirect() ? __('Video Call') : __('Group Video Call') }}' : '{{ __('Video calling requires an active WebSocket connection') }}'"
+                        >
+                            <x-icon name="video" class="h-4 w-4" />
+                        </button>
+                    @endif
+
+                    <!-- Open In New Tab -->
+                    @if ($activeConversation)
+                        <a
+                            href="{{ route('admin.chat.index', ['conversation' => $activeConversation->uuid]) }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            tabindex="-1"
+                            class="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                            title="{{ __('Open chat in new tab') }}"
+                        >
+                            <x-icon name="external-link" class="h-4 w-4" />
+                        </a>
+                    @endif
+
+                    <!-- Fullscreen View Toggle -->
                     <button
                         type="button"
-                        wire:click="promptCall('video', {{ $activeConversation->isDirect() ? 'false' : 'true' }})"
+                        x-on:click="toggleFullscreen()"
                         class="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                        title="{{ $activeConversation->isDirect() ? __('Video Call') : __('Group Video Call') }}"
+                        title="{{ __('Toggle Fullscreen') }}"
                     >
-                        <x-icon name="video" class="h-4 w-4" />
+                        <x-icon name="maximize-2" class="h-4 w-4" x-show="!isFullscreen" />
+                        <x-icon name="minimize-2" class="h-4 w-4" x-show="isFullscreen" x-cloak />
                     </button>
 
                     <!-- Invite / QR Code Modal Button for Groups & Channels -->
@@ -1069,6 +1394,56 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                     </button>
                 </div>
             </div>
+
+            <!-- WebSocket Disconnected Warning Banner -->
+            <div
+                x-show="$store.websocket && !$store.websocket.connected"
+                x-cloak
+                x-transition
+                class="px-4 py-2 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2 shrink-0 z-10"
+            >
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="relative flex h-2 w-2 shrink-0">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                    <span class="truncate">{{ __('Real-time WebSocket disconnected. Audio/video calling is paused until connection is restored.') }}</span>
+                </div>
+                <button
+                    type="button"
+                    @click="$store.websocket?.reconnect()"
+                    class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 font-semibold shrink-0 transition-colors cursor-pointer"
+                >
+                    {{ __('Reconnect') }}
+                </button>
+            </div>
+
+            <!-- Ongoing Active Group Call Banner -->
+            @if ($this->activeGroupCall && $activeConversation && ! $activeConversation->isDirect())
+                <div class="px-4 py-2.5 bg-emerald-500/15 border-b border-emerald-500/30 flex items-center justify-between gap-3 text-xs shrink-0 z-10 animate-pulse">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="p-1.5 rounded-full bg-emerald-500 text-white shrink-0">
+                            <x-icon name="phone-call" class="h-4 w-4 animate-bounce" />
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-emerald-800 dark:text-emerald-300 truncate">
+                                {{ __('Ongoing Group Call in Progress') }}
+                            </p>
+                            <p class="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                                {{ __(':count participants active', ['count' => $this->activeGroupCall->activeParticipants()->count()]) }}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        @click="$dispatch('join-group-call', { callUuid: '{{ $this->activeGroupCall->uuid }}', type: '{{ $this->activeGroupCall->type }}' })"
+                        class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                        <x-icon name="phone" class="h-3.5 w-3.5" />
+                        {{ __('Join Call') }}
+                    </button>
+                </div>
+            @endif
 
             <!-- Pinned Messages Banner -->
             @if ($pinnedMessages->isNotEmpty())
@@ -1152,13 +1527,22 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         >
                             <div class="flex items-end gap-1.5 max-w-[85%] sm:max-w-[75%]">
                                 @if (! $isOutgoing && ! $activeConversation->isDirect())
-                                    <x-ui.avatar :name="$msg->user?->name" :initials="$msg->user?->initials()" :src="$msg->user?->avatarUrl()" size="size-7 text-[10px] shrink-0 mb-1" />
+                                    <div wire:click="viewUserProfile({{ $msg->user_id }})" class="cursor-pointer hover:opacity-85 transition-opacity" title="{{ __('View profile') }}">
+                                        <x-ui.avatar :name="$msg->user?->name" :initials="$msg->user?->initials()" :src="$msg->user?->avatarUrl()" size="size-7 text-[10px] shrink-0 mb-1" />
+                                    </div>
                                 @endif
 
                                 <div class="space-y-1">
-                                    <!-- Sender Name for Groups -->
+                                    <!-- Sender Name for Groups (Clickable to View Profile) -->
                                     @if (! $isOutgoing && ! $activeConversation->isDirect())
-                                        <p class="text-[11px] font-semibold text-primary px-1">{{ $msg->user?->name }}</p>
+                                        <button
+                                            type="button"
+                                            wire:click="viewUserProfile({{ $msg->user_id }})"
+                                            class="text-[11px] font-semibold text-primary px-1 hover:underline cursor-pointer text-left"
+                                            title="{{ __('View :name profile & direct message', ['name' => $msg->user?->name ?? '']) }}"
+                                        >
+                                            {{ $msg->user?->name }}
+                                        </button>
                                     @endif
 
                                     <div
@@ -1342,11 +1726,62 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                                             @endif
                                         </div>
                                     </div>
+
+                                    <!-- Emoji Reaction Badges -->
+                                    @php
+                                        $groupedReactions = $msg->groupedReactions($currentUser->id);
+                                    @endphp
+                                    @if (! empty($groupedReactions))
+                                        <div class="flex flex-wrap items-center gap-1 pt-0.5 {{ $isOutgoing ? 'justify-end' : 'justify-start' }}">
+                                            @foreach ($groupedReactions as $rxEmoji => $rxData)
+                                                <button
+                                                    type="button"
+                                                    wire:click="toggleReaction({{ $msg->id }}, '{{ $rxEmoji }}')"
+                                                    class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border transition-all cursor-pointer shadow-2xs {{ $rxData['has_reacted'] ? 'bg-primary/15 border-primary text-primary font-bold' : 'bg-card border-border text-foreground hover:bg-secondary' }}"
+                                                    title="{{ implode(', ', $rxData['users']) }}"
+                                                >
+                                                    <span>{{ $rxEmoji }}</span>
+                                                    <span class="text-[10px] font-mono">{{ $rxData['count'] }}</span>
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </div>
 
-                                <!-- Hover Action Dropdown (Reply, Pin, Edit, Delete with Confirmation) -->
+                                <!-- Hover Action Buttons (Emoji React Bar, Reply, Pin, Edit, Delete) -->
                                 @if (! $msg->is_deleted_for_everyone)
                                     <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
+                                        <!-- Quick Emoji Reaction Bar (Popover) -->
+                                        <div x-data="{ openReact: false }" class="relative">
+                                            <button
+                                                type="button"
+                                                @click="openReact = !openReact"
+                                                class="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
+                                                title="{{ __('React with emoji') }}"
+                                            >
+                                                <x-icon name="smile" class="h-3.5 w-3.5" />
+                                            </button>
+
+                                            <div
+                                                x-show="openReact"
+                                                @click.outside="openReact = false"
+                                                x-transition
+                                                x-cloak
+                                                class="absolute bottom-full mb-1 z-30 flex items-center gap-1 p-1 rounded-full border border-border bg-popover text-popover-foreground shadow-lg {{ $isOutgoing ? 'right-0' : 'left-0' }}"
+                                            >
+                                                @foreach (['👍', '❤️', '😂', '😮', '😢', '👏', '🔥', '🎉'] as $em)
+                                                    <button
+                                                        type="button"
+                                                        wire:click="toggleReaction({{ $msg->id }}, '{{ $em }}')"
+                                                        @click="openReact = false"
+                                                        class="p-1 text-base hover:scale-125 transition-transform cursor-pointer"
+                                                    >
+                                                        {{ $em }}
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        </div>
+
                                         <button
                                             type="button"
                                             wire:click="setReplyTo({{ $msg->id }})"
@@ -1453,13 +1888,41 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             @if (! empty($attachments))
                 <div class="px-4 py-2 bg-secondary/40 border-t border-border flex items-center gap-2 overflow-x-auto">
                     @foreach ($attachments as $index => $att)
-                        <div class="relative rounded-lg border border-border bg-card p-1.5 flex items-center gap-2 text-xs">
-                            <x-icon name="file" class="h-4 w-4 text-primary" />
-                            <span class="truncate max-w-[120px]">{{ $att->getClientOriginalName() }}</span>
+                        <div class="relative rounded-lg border border-border bg-card p-1.5 flex items-center gap-2 text-xs shrink-0 shadow-xs">
+                            <x-icon name="file" class="h-4 w-4 text-primary shrink-0" />
+                            <span class="truncate max-w-[130px] font-medium">{{ $att->getClientOriginalName() }}</span>
+                            <button
+                                type="button"
+                                wire:click="removeAttachment({{ $index }})"
+                                class="p-1 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                                title="{{ __('Remove attachment') }}"
+                            >
+                                <x-icon name="x" class="h-3.5 w-3.5" />
+                            </button>
                         </div>
                     @endforeach
                 </div>
             @endif
+
+            <!-- Floating Typing Indicator Bubble -->
+            <div
+                x-show="typingCount > 0"
+                x-transition:enter="transition ease-out duration-200"
+                x-transition:enter-start="opacity-0 translate-y-2"
+                x-transition:enter-end="opacity-100 translate-y-0"
+                x-transition:leave="transition ease-in duration-150"
+                x-transition:leave-start="opacity-100 translate-y-0"
+                x-transition:leave-end="opacity-0 translate-y-2"
+                x-cloak
+                class="px-4 py-1.5 bg-card/95 backdrop-blur-md border-t border-border flex items-center gap-2 text-xs text-muted-foreground shrink-0"
+            >
+                <div class="flex items-center gap-1 text-primary">
+                    <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.15s]"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.3s]"></span>
+                </div>
+                <span class="font-medium text-foreground truncate" x-text="typingText"></span>
+            </div>
 
             <!-- Composer Input Bar -->
             @if ($activeConversation->canPost($currentUser))
@@ -1508,6 +1971,29 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         <input type="file" wire:model="attachments" multiple class="hidden" />
                     </label>
 
+                    <!-- Edit Image & Send Button -->
+                    <label class="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="{{ __('Edit & Crop Image before sending') }}">
+                        <x-icon name="crop" class="h-5 w-5" />
+                        <input
+                            type="file"
+                            accept="image/*"
+                            class="hidden"
+                            @change="
+                                const file = $event.target.files[0];
+                                if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                        window.dispatchEvent(new CustomEvent('open-image-editor', {
+                                            detail: { src: e.target.result, target: 'attachment', aspectRatio: 'free' }
+                                        }));
+                                    };
+                                    reader.readAsDataURL(file);
+                                    $event.target.value = '';
+                                }
+                            "
+                        />
+                    </label>
+
                     <!-- Text Composer -->
                     <div class="flex-1">
                         @if ($editingMessageId)
@@ -1522,8 +2008,15 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                             <textarea
                                 x-ref="composerInput"
                                 wire:model="messageText"
+                                @input="onComposerInput()"
                                 rows="1"
-                                wire:keydown.enter.prevent="sendMessage"
+                                @keydown.enter.exact.prevent="
+                                    clearOwnTyping();
+                                    if ($el.value.trim() || ($wire.attachments && $wire.attachments.length > 0)) {
+                                        playMessageSentChime();
+                                        $wire.sendMessage();
+                                    }
+                                "
                                 placeholder="{{ __('Type a message… (Press Enter to send, Shift+Enter for newline)') }}"
                                 class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary resize-none max-h-32 leading-relaxed"
                             ></textarea>
@@ -1538,7 +2031,13 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                     @else
                         <button
                             type="button"
-                            wire:click="sendMessage"
+                            @click="
+                                clearOwnTyping();
+                                if (($refs.composerInput && $refs.composerInput.value.trim()) || ($wire.attachments && $wire.attachments.length > 0)) {
+                                    playMessageSentChime();
+                                    $wire.sendMessage();
+                                }
+                            "
                             class="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-transform active:scale-95 cursor-pointer shrink-0 shadow-xs mb-0.5"
                             title="{{ __('Send Message') }}"
                         >
@@ -1591,7 +2090,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                             <label
                                 for="drawer-group-avatar-upload"
                                 class="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-[10px] font-medium"
-                                title="{{ __('Change display picture') }}"
+                                title="{{ __('Change / Crop display picture') }}"
                             >
                                 <x-icon name="camera" class="h-5 w-5 mb-0.5" />
                                 <span>{{ __('Change') }}</span>
@@ -1599,9 +2098,21 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                             <input
                                 type="file"
                                 id="drawer-group-avatar-upload"
-                                wire:model="directAvatarUpload"
                                 accept="image/*"
                                 class="hidden"
+                                @change="
+                                    const file = $event.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (e) => {
+                                            window.dispatchEvent(new CustomEvent('open-image-editor', {
+                                                detail: { src: e.target.result, target: 'direct', aspectRatio: 'circle' }
+                                            }));
+                                        };
+                                        reader.readAsDataURL(file);
+                                        $event.target.value = '';
+                                    }
+                                "
                             />
                         @endif
                     </div>
@@ -1690,10 +2201,10 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         <div class="space-y-2">
                             @foreach ($activeConversation->participants as $part)
                                 <div class="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-secondary/40 text-xs">
-                                    <div class="flex items-center gap-2 min-w-0">
+                                    <div class="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-85" wire:click="viewUserProfile({{ $part->user_id }})" title="{{ __('Click to view details & direct message') }}">
                                         <x-ui.avatar :name="$part->user?->name" :initials="$part->user?->initials()" :src="$part->user?->avatarUrl()" size="size-7 text-[10px]" />
                                         <div class="min-w-0">
-                                            <p class="font-semibold text-foreground truncate">{{ $part->user?->name }}</p>
+                                            <p class="font-semibold text-foreground truncate hover:text-primary hover:underline">{{ $part->user?->name }}</p>
                                             <span class="text-[10px] text-muted-foreground">{{ ucfirst($part->role) }}</span>
                                         </div>
                                     </div>
@@ -1759,35 +2270,313 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         </div>
     </x-ui.modal>
 
-    <!-- 2. Modal: Pre-Call Confirmation & Permissions -->
-    <x-ui.modal name="call-confirm-modal" max-width="max-w-md" title="{{ __('Start Call Confirmation') }}">
-        <div class="space-y-4 text-center">
-            <div class="h-14 w-14 rounded-full {{ $pendingCallType === 'video' ? 'bg-blue-500/10 text-blue-500' : 'bg-emerald-500/10 text-emerald-500' }} flex items-center justify-center mx-auto">
-                <x-icon :name="$pendingCallType === 'video' ? 'video' : 'phone'" class="h-7 w-7" />
+    <!-- 2. Modal: Pre-Call Device & Permissions Preview (Camera, Mic & Speaker) -->
+    <div
+        x-data="chatPreCallPreviewAlpine()"
+        x-show="isOpen"
+        x-cloak
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-background/80 backdrop-blur-md overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+    >
+        <div
+            x-show="isOpen"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 scale-95 -translate-y-2"
+            x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+            x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
+            @click.outside="cancelPreview()"
+            class="w-full max-w-lg rounded-3xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col my-auto"
+        >
+            <!-- Modal Header -->
+            <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-3 bg-secondary/30">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="p-2.5 rounded-2xl" :class="callType === 'video' ? 'bg-primary/10 text-primary' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'">
+                        <x-icon name="video" class="h-5 w-5" x-show="callType === 'video'" />
+                        <x-icon name="phone-call" class="h-5 w-5" x-show="callType === 'audio'" />
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="text-sm font-bold text-foreground truncate" x-text="callType === 'video' ? '{{ __('Ready for Video Call?') }}' : '{{ __('Ready for Voice Call?') }}'"></h3>
+                        <p class="text-xs text-muted-foreground truncate" x-text="'{{ __('Calling:') }} ' + peerName"></p>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    @click="cancelPreview()"
+                    class="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                    aria-label="{{ __('Close') }}"
+                >
+                    <x-icon name="x" class="h-4 w-4" />
+                </button>
             </div>
 
-            <div class="space-y-1">
-                <h4 class="font-bold text-sm text-foreground">
-                    {{ __('Start :type Call to :name?', [
-                        'type' => ucfirst($pendingCallType),
-                        'name' => $activeConversation ? $activeConversation->displayNameFor($currentUser) : __('Participant')
-                    ]) }}
-                </h4>
-                <p class="text-xs text-muted-foreground">
-                    {{ __('Please make sure your microphone (and camera for video calls) is connected and permission is allowed in your browser.') }}
-                </p>
+            <!-- Modal Body / Device Preview -->
+            <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                <!-- A. Video Call Stage (16:9 Camera Feed & Camera Toggles) -->
+                <div x-show="callType === 'video'" class="space-y-3">
+                    <div class="relative w-full aspect-video rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden flex items-center justify-center shadow-inner">
+                        <!-- Loading skeleton -->
+                        <div x-show="isLoadingMedia" class="absolute inset-0 flex flex-col items-center justify-center space-y-2 bg-zinc-950/80 z-20">
+                            <x-icon name="refresh-cw" class="h-6 w-6 animate-spin text-primary" />
+                            <span class="text-xs text-zinc-400 font-medium">{{ __('Accessing camera & microphone…') }}</span>
+                        </div>
+
+                        <!-- Video stream preview -->
+                        <video
+                            x-ref="preCallVideo"
+                            autoplay
+                            playsinline
+                            muted
+                            class="w-full h-full object-cover transition-transform"
+                            :class="[(!videoOff && !isLoadingMedia) ? 'block' : 'hidden', isMirrored ? '-scale-x-100' : '']"
+                        ></video>
+
+                        <!-- Camera Off placeholder -->
+                        <div
+                            x-show="videoOff && !isLoadingMedia"
+                            class="flex flex-col items-center justify-center space-y-3 p-4 text-center z-10"
+                        >
+                            <div class="relative">
+                                <div class="absolute -inset-3 rounded-full bg-primary/20 animate-pulse"></div>
+                                <x-ui.avatar :name="$currentUser->name" :initials="$currentUser->initials()" :src="$currentUser->avatarUrl()" size="size-20 text-2xl border-2 border-border shadow-xl" />
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-zinc-200">{{ __('Camera is turned off') }}</p>
+                                <p class="text-[11px] text-zinc-400 mt-0.5" x-text="micMuted ? '{{ __('Microphone is muted') }}' : '{{ __('Microphone active') }}'"></p>
+                            </div>
+                        </div>
+
+                        <!-- Floating Device Controls Toolbar -->
+                        <div class="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3 z-30">
+                            <!-- Mic Button -->
+                            <button
+                                type="button"
+                                @click="toggleMic()"
+                                :class="micMuted ? 'bg-rose-600 text-white hover:bg-rose-700' : (audioLevel > 5 ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-zinc-800/90 text-zinc-100 hover:bg-zinc-700/90 border border-zinc-700')"
+                                class="h-11 w-11 rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-105 cursor-pointer backdrop-blur-md"
+                                :title="micMuted ? '{{ __('Unmute Microphone') }}' : '{{ __('Mute Microphone') }}'"
+                            >
+                                <x-icon name="mic" class="h-5 w-5" x-show="!micMuted" />
+                                <x-icon name="mic-off" class="h-5 w-5" x-show="micMuted" />
+                            </button>
+
+                            <!-- Camera Button -->
+                            <button
+                                type="button"
+                                @click="toggleVideo()"
+                                :class="videoOff ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-zinc-800/90 text-zinc-100 hover:bg-zinc-700/90 border border-zinc-700'"
+                                class="h-11 w-11 rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-105 cursor-pointer backdrop-blur-md"
+                                :title="videoOff ? '{{ __('Turn Camera On') }}' : '{{ __('Turn Camera Off') }}'"
+                            >
+                                <x-icon name="video" class="h-5 w-5" x-show="!videoOff" />
+                                <x-icon name="video-off" class="h-5 w-5" x-show="videoOff" />
+                            </button>
+
+                            <!-- Mirror Toggle -->
+                            <button
+                                type="button"
+                                @click="toggleMirror()"
+                                class="h-11 w-11 rounded-full flex items-center justify-center transition-all shadow-lg hover:scale-105 cursor-pointer backdrop-blur-md bg-zinc-800/90 text-zinc-100 hover:bg-zinc-700/90 border border-zinc-700"
+                                :title="isMirrored ? '{{ __('Disable Mirror Mode') }}' : '{{ __('Enable Mirror Mode') }}'"
+                            >
+                                <x-icon name="flip-horizontal" class="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <!-- Live Mic Volume Activity Indicator Badge on Top Left -->
+                        <div
+                            class="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-900/80 border border-zinc-700/60 backdrop-blur-md text-[11px] text-zinc-200 z-30"
+                        >
+                            <span class="h-2 w-2 rounded-full" :class="micMuted ? 'bg-rose-500' : (audioLevel > 5 ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500')"></span>
+                            <span x-text="micMuted ? '{{ __('Muted') }}' : '{{ __('Mic Active') }}'"></span>
+                            <div x-show="!micMuted" class="flex items-center gap-0.5 h-3 ml-1">
+                                <span class="w-0.5 rounded-full bg-emerald-400 transition-all duration-75" :style="`height: ${Math.max(3, audioLevel * 0.15)}px`"></span>
+                                <span class="w-0.5 rounded-full bg-emerald-400 transition-all duration-75" :style="`height: ${Math.max(3, audioLevel * 0.3)}px`"></span>
+                                <span class="w-0.5 rounded-full bg-emerald-400 transition-all duration-75" :style="`height: ${Math.max(3, audioLevel * 0.18)}px`"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- B. Voice Call Stage (Pure Audio & Mic Preview, No Camera) -->
+                <div x-show="callType === 'audio'" class="space-y-4">
+                    <div class="relative w-full py-8 px-4 rounded-2xl bg-gradient-to-b from-emerald-950/20 via-card to-card border border-border flex flex-col items-center justify-center text-center space-y-5 shadow-xs">
+                        <div x-show="isLoadingMedia" class="flex flex-col items-center justify-center space-y-2 py-4">
+                            <x-icon name="refresh-cw" class="h-6 w-6 animate-spin text-emerald-500" />
+                            <span class="text-xs text-muted-foreground font-medium">{{ __('Accessing microphone…') }}</span>
+                        </div>
+
+                        <div x-show="!isLoadingMedia" class="space-y-4 flex flex-col items-center">
+                            <!-- Pulsing Voice Avatar -->
+                            <div class="relative">
+                                <div
+                                    class="absolute -inset-4 rounded-full bg-emerald-500/20 transition-transform duration-100"
+                                    :class="(!micMuted && audioLevel > 5) ? 'scale-125 animate-pulse' : 'scale-100'"
+                                ></div>
+                                <div class="relative">
+                                    <x-ui.avatar :name="$currentUser->name" :initials="$currentUser->initials()" :src="$currentUser->avatarUrl()" size="size-24 text-2xl border-4 border-emerald-500/50 shadow-xl" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-sm font-bold text-foreground">{{ __('Voice Call Mode') }}</h4>
+                                <p class="text-xs text-muted-foreground mt-0.5">{{ __('Only microphone access will be used for this call.') }}</p>
+                            </div>
+
+                            <!-- Live Microphone Waveform / Volume Level Meter -->
+                            <div class="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-secondary/50 border border-border w-full max-w-xs justify-between">
+                                <div class="flex items-center gap-2 text-xs font-semibold" :class="micMuted ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'">
+                                    <x-icon name="mic" class="h-4 w-4 shrink-0" x-show="!micMuted" />
+                                    <x-icon name="mic-off" class="h-4 w-4 shrink-0" x-show="micMuted" />
+                                    <span x-text="micMuted ? '{{ __('Microphone is muted') }}' : '{{ __('Microphone connected') }}'"></span>
+                                </div>
+
+                                <div x-show="!micMuted" class="flex items-center gap-1 h-5">
+                                    <span class="w-1 rounded-full bg-emerald-500 transition-all duration-75" :style="`height: ${Math.max(4, audioLevel * 0.2)}px`"></span>
+                                    <span class="w-1 rounded-full bg-emerald-500 transition-all duration-75" :style="`height: ${Math.max(4, audioLevel * 0.35)}px`"></span>
+                                    <span class="w-1 rounded-full bg-emerald-500 transition-all duration-75" :style="`height: ${Math.max(4, audioLevel * 0.5)}px`"></span>
+                                    <span class="w-1 rounded-full bg-emerald-500 transition-all duration-75" :style="`height: ${Math.max(4, audioLevel * 0.3)}px`"></span>
+                                    <span class="w-1 rounded-full bg-emerald-500 transition-all duration-75" :style="`height: ${Math.max(4, audioLevel * 0.15)}px`"></span>
+                                </div>
+                            </div>
+
+                            <!-- Mic Mute / Unmute Toggle Button -->
+                            <div>
+                                <button
+                                    type="button"
+                                    @click="toggleMic()"
+                                    :class="micMuted ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-secondary text-foreground hover:bg-secondary/80 border border-border'"
+                                    class="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                                >
+                                    <x-icon name="mic" class="h-4 w-4" x-show="!micMuted" />
+                                    <x-icon name="mic-off" class="h-4 w-4" x-show="micMuted" />
+                                    <span x-text="micMuted ? '{{ __('Unmute Microphone') }}' : '{{ __('Mute Microphone') }}'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- C. Device Selectors Section (Microphone, Camera, Speaker) -->
+                <div class="space-y-3 pt-1 border-t border-border/50 text-xs">
+                    <!-- Microphone Selector -->
+                    <div class="space-y-1.5" x-show="audioInputs.length > 0">
+                        <label class="font-semibold text-muted-foreground flex items-center gap-1.5">
+                            <x-icon name="mic" class="h-3.5 w-3.5" />
+                            <span>{{ __('Microphone') }}</span>
+                        </label>
+                        <select
+                            x-model="selectedAudioInput"
+                            @change="onAudioInputChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-secondary/40 border border-input text-xs focus:ring-2 focus:ring-primary focus:outline-none"
+                        >
+                            <template x-for="mic in audioInputs" :key="mic.deviceId">
+                                <option :value="mic.deviceId" x-text="mic.label"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Camera Selector (Video calls) -->
+                    <div class="space-y-1.5" x-show="callType === 'video' && videoInputs.length > 0">
+                        <label class="font-semibold text-muted-foreground flex items-center gap-1.5">
+                            <x-icon name="video" class="h-3.5 w-3.5" />
+                            <span>{{ __('Camera') }}</span>
+                        </label>
+                        <select
+                            x-model="selectedVideoInput"
+                            @change="onVideoInputChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-secondary/40 border border-input text-xs focus:ring-2 focus:ring-primary focus:outline-none"
+                        >
+                            <template x-for="cam in videoInputs" :key="cam.deviceId">
+                                <option :value="cam.deviceId" x-text="cam.label"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Speaker Selector & Sound Test -->
+                    <div class="space-y-1.5" x-show="audioOutputs.length > 0">
+                        <div class="flex items-center justify-between">
+                            <label class="font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <x-icon name="volume-2" class="h-3.5 w-3.5" />
+                                <span>{{ __('Speaker / Output') }}</span>
+                            </label>
+                            <button
+                                type="button"
+                                @click="testSpeakerSound()"
+                                class="text-primary hover:underline flex items-center gap-1 font-medium text-[11px] cursor-pointer"
+                            >
+                                <x-icon name="play" class="h-3 w-3" x-show="!isTestingSpeaker" />
+                                <x-icon name="loader-2" class="h-3 w-3 animate-spin" x-show="isTestingSpeaker" />
+                                <span>{{ __('Test Audio Chime') }}</span>
+                            </button>
+                        </div>
+                        <select
+                            x-model="selectedAudioOutput"
+                            @change="onAudioOutputChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-secondary/40 border border-input text-xs focus:ring-2 focus:ring-primary focus:outline-none"
+                        >
+                            <template x-for="spk in audioOutputs" :key="spk.deviceId">
+                                <option :value="spk.deviceId" x-text="spk.label"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Hardware Access Error / Warning Box -->
+                <div
+                    x-show="permissionError"
+                    x-transition
+                    class="p-3.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs space-y-2"
+                >
+                    <div class="flex items-start gap-2.5">
+                        <x-icon name="alert-triangle" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                        <div class="flex-1">
+                            <p class="font-semibold text-xs">{{ __('Device Access Notice') }}</p>
+                            <p class="text-[11px] opacity-90 mt-0.5" x-text="permissionError"></p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button
+                            type="button"
+                            @click="retryPermissions()"
+                            class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium text-[11px] transition-colors cursor-pointer shadow-xs"
+                        >
+                            <x-icon name="refresh-cw" class="h-3 w-3" />
+                            {{ __('Retry Permissions') }}
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div class="flex justify-end gap-2 pt-2">
-                <x-ui.button x-on:click="$store.modals.close('call-confirm-modal')" variant="secondary">
+            <!-- Modal Footer -->
+            <div class="px-5 py-3.5 border-t border-border flex items-center justify-between gap-3 bg-secondary/20">
+                <x-ui.button type="button" @click="cancelPreview()" variant="secondary">
                     {{ __('Cancel') }}
                 </x-ui.button>
-                <x-ui.button wire:click="launchConfirmedCall" variant="default" :icon="$pendingCallType === 'video' ? 'video' : 'phone'">
-                    {{ __('Start Call') }}
-                </x-ui.button>
+
+                <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        @click="startCallNow()"
+                        class="inline-flex items-center gap-2 rounded-xl bg-primary text-primary-foreground hover:opacity-90 px-4 py-2 text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
+                    >
+                        <x-icon name="video" class="h-4 w-4" x-show="callType === 'video'" />
+                        <x-icon name="phone" class="h-4 w-4" x-show="callType === 'audio'" />
+                        <span x-text="callType === 'video' ? '{{ __('Start Video Call') }}' : '{{ __('Start Voice Call') }}'"></span>
+                    </button>
+                </div>
             </div>
         </div>
-    </x-ui.modal>
+    </div>
 
     <!-- 3. Modal: User Call History / Logs -->
     <x-ui.modal name="call-history-modal" max-width="max-w-md" title="{{ __('Call History & Logs') }}">
@@ -1870,23 +2659,40 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 <label class="block text-xs font-semibold text-foreground mb-1">{{ __('Group Display Picture (Optional)') }}</label>
                 <div class="flex items-center gap-3">
                     <div class="h-12 w-12 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0">
-                        @if ($groupAvatar)
+                        @if ($newGroupAvatarPath)
+                            <img src="{{ asset('storage/' . $newGroupAvatarPath) }}" class="h-full w-full object-cover" alt="Avatar" />
+                        @elseif ($groupAvatar)
                             <img src="{{ $groupAvatar->temporaryUrl() }}" class="h-full w-full object-cover" alt="Avatar" />
                         @else
                             <x-icon name="users" class="h-6 w-6 text-muted-foreground" />
                         @endif
                     </div>
                     <div class="flex-1 min-w-0">
-                        <input
-                            type="file"
-                            wire:model="groupAvatar"
-                            accept="image/*"
-                            class="block w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                        />
+                        <label
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold cursor-pointer transition-colors"
+                        >
+                            <x-icon name="upload" class="h-3.5 w-3.5" />
+                            <span>{{ __('Upload & Crop Image') }}</span>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                class="hidden"
+                                @change="
+                                    const file = $event.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (e) => {
+                                            window.dispatchEvent(new CustomEvent('open-image-editor', {
+                                                detail: { src: e.target.result, target: 'group', aspectRatio: 'circle' }
+                                            }));
+                                        };
+                                        reader.readAsDataURL(file);
+                                        $event.target.value = '';
+                                    }
+                                "
+                            />
+                        </label>
                     </div>
-                </div>
-                <div wire:loading wire:target="groupAvatar" class="text-xs text-primary mt-1">
-                    {{ __('Uploading preview…') }}
                 </div>
                 @error('groupAvatar') <span class="text-xs text-rose-500">{{ $message }}</span> @enderror
             </div>
@@ -1934,23 +2740,40 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 <label class="block text-xs font-semibold text-foreground mb-1">{{ __('Channel Display Picture (Optional)') }}</label>
                 <div class="flex items-center gap-3">
                     <div class="h-12 w-12 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0">
-                        @if ($channelAvatar)
+                        @if ($newChannelAvatarPath)
+                            <img src="{{ asset('storage/' . $newChannelAvatarPath) }}" class="h-full w-full object-cover" alt="Avatar" />
+                        @elseif ($channelAvatar)
                             <img src="{{ $channelAvatar->temporaryUrl() }}" class="h-full w-full object-cover" alt="Avatar" />
                         @else
                             <x-icon name="radio" class="h-6 w-6 text-muted-foreground" />
                         @endif
                     </div>
                     <div class="flex-1 min-w-0">
-                        <input
-                            type="file"
-                            wire:model="channelAvatar"
-                            accept="image/*"
-                            class="block w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                        />
+                        <label
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold cursor-pointer transition-colors"
+                        >
+                            <x-icon name="upload" class="h-3.5 w-3.5" />
+                            <span>{{ __('Upload & Crop Image') }}</span>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                class="hidden"
+                                @change="
+                                    const file = $event.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (e) => {
+                                            window.dispatchEvent(new CustomEvent('open-image-editor', {
+                                                detail: { src: e.target.result, target: 'channel', aspectRatio: 'circle' }
+                                            }));
+                                        };
+                                        reader.readAsDataURL(file);
+                                        $event.target.value = '';
+                                    }
+                                "
+                            />
+                        </label>
                     </div>
-                </div>
-                <div wire:loading wire:target="channelAvatar" class="text-xs text-primary mt-1">
-                    {{ __('Uploading preview…') }}
                 </div>
                 @error('channelAvatar') <span class="text-xs text-rose-500">{{ $message }}</span> @enderror
             </div>
@@ -2017,7 +2840,9 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                     <label class="block text-xs font-semibold text-foreground">{{ __('Group / Channel Display Picture') }}</label>
                     <div class="flex items-center gap-3">
                         <div class="relative shrink-0">
-                            @if (! $removeAvatar && $editAvatar)
+                            @if (! $removeAvatar && $newEditAvatarPath)
+                                <img src="{{ asset('storage/' . $newEditAvatarPath) }}" class="h-16 w-16 rounded-full object-cover border-2 border-primary shadow-xs" alt="Preview" />
+                            @elseif (! $removeAvatar && $editAvatar)
                                 <img src="{{ $editAvatar->temporaryUrl() }}" class="h-16 w-16 rounded-full object-cover border-2 border-primary shadow-xs" alt="Preview" />
                             @elseif (! $removeAvatar && $activeConversation->avatar)
                                 <img src="{{ $activeConversation->displayAvatarFor($currentUser) }}" class="h-16 w-16 rounded-full object-cover border-2 border-border shadow-xs" alt="Current Avatar" />
@@ -2031,21 +2856,31 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         <div class="flex-1 space-y-1.5 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <label
-                                    for="modal-edit-avatar-upload"
                                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 cursor-pointer shadow-xs transition-opacity"
                                 >
-                                    <x-icon name="upload" class="h-3.5 w-3.5" />
-                                    <span>{{ __('Upload New Picture') }}</span>
+                                    <x-icon name="crop" class="h-3.5 w-3.5" />
+                                    <span>{{ __('Upload & Edit Picture') }}</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        class="hidden"
+                                        @change="
+                                            const file = $event.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (e) => {
+                                                    window.dispatchEvent(new CustomEvent('open-image-editor', {
+                                                        detail: { src: e.target.result, target: 'edit', aspectRatio: 'circle' }
+                                                    }));
+                                                };
+                                                reader.readAsDataURL(file);
+                                                $event.target.value = '';
+                                            }
+                                        "
+                                    />
                                 </label>
-                                <input
-                                    type="file"
-                                    id="modal-edit-avatar-upload"
-                                    wire:model="editAvatar"
-                                    accept="image/*"
-                                    class="hidden"
-                                />
 
-                                @if (($activeConversation->avatar && ! $removeAvatar) || $editAvatar)
+                                @if (($activeConversation->avatar && ! $removeAvatar) || $editAvatar || $newEditAvatarPath)
                                     <button
                                         type="button"
                                         wire:click="removeGroupAvatar"
@@ -2056,14 +2891,10 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                                     </button>
                                 @endif
                             </div>
-                            <p class="text-[10px] text-muted-foreground">{{ __('JPG, PNG, GIF, WebP up to 5MB.') }}</p>
+                            <p class="text-[10px] text-muted-foreground">{{ __('JPG, PNG, GIF, WebP up to 5MB. Opens image editor.') }}</p>
                         </div>
                     </div>
 
-                    <div wire:loading wire:target="editAvatar" class="text-xs text-primary font-semibold flex items-center gap-1.5">
-                        <x-icon name="loader" class="h-3.5 w-3.5 animate-spin" />
-                        <span>{{ __('Processing image preview…') }}</span>
-                    </div>
                     @error('editAvatar')
                         <p class="text-xs text-rose-500">{{ $message }}</p>
                     @enderror
@@ -2262,4 +3093,76 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             </div>
         </div>
     </div>
+
+    <!-- 6. User Profile & Direct Message Modal -->
+    <x-ui.modal name="user-profile-modal" max-width="max-w-md" title="{{ __('User Profile') }}">
+        @if ($this->viewingUserProfile)
+            <div class="p-6 space-y-5 text-center">
+                <div class="relative inline-block mx-auto">
+                    <x-ui.avatar
+                        :name="$this->viewingUserProfile->name"
+                        :initials="$this->viewingUserProfile->initials()"
+                        :src="$this->viewingUserProfile->avatarUrl()"
+                        size="size-20 text-xl mx-auto shadow-md"
+                    />
+                    @if ($this->viewingUserProfile->isOnline())
+                        <span class="absolute bottom-1 right-1 h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-background"></span>
+                    @endif
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-bold text-foreground">{{ $this->viewingUserProfile->name }}</h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        {{ $this->viewingUserProfile->designation ?? ($this->viewingUserProfile->roles->first()?->name ?? __('Member')) }}
+                    </p>
+                </div>
+
+                <div class="p-3.5 rounded-xl border border-border bg-secondary/30 text-left space-y-2 text-xs">
+                    <div class="flex items-center justify-between">
+                        <span class="text-muted-foreground font-medium">{{ __('Email:') }}</span>
+                        <span class="text-foreground font-semibold truncate ml-2">{{ $this->viewingUserProfile->email }}</span>
+                    </div>
+                    @if ($this->viewingUserProfile->phone)
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground font-medium">{{ __('Phone:') }}</span>
+                            <span class="text-foreground font-semibold ml-2">{{ $this->viewingUserProfile->phone }}</span>
+                        </div>
+                    @endif
+                    @if ($this->viewingUserProfile->whatsapp_no)
+                        <div class="flex items-center justify-between">
+                            <span class="text-muted-foreground font-medium">{{ __('WhatsApp:') }}</span>
+                            <span class="text-foreground font-semibold ml-2">{{ $this->viewingUserProfile->whatsapp_no }}</span>
+                        </div>
+                    @endif
+                    <div class="flex items-center justify-between">
+                        <span class="text-muted-foreground font-medium">{{ __('Status:') }}</span>
+                        <span class="font-medium {{ $this->viewingUserProfile->isOnline() ? 'text-emerald-500 font-semibold' : 'text-muted-foreground' }}">
+                            {{ $this->viewingUserProfile->lastSeenText() }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-center gap-2">
+                    <x-ui.button type="button" x-on:click="$store.modals.close('user-profile-modal')" variant="outline" size="sm">
+                        {{ __('Close') }}
+                    </x-ui.button>
+
+                    @if (auth()->id() !== $this->viewingUserProfile->id)
+                        <x-ui.button
+                            type="button"
+                            wire:click="startDirectMessage({{ $this->viewingUserProfile->id }})"
+                            variant="default"
+                            size="sm"
+                            icon="message-square"
+                        >
+                            {{ __('Direct Message') }}
+                        </x-ui.button>
+                    @endif
+                </div>
+            </div>
+        @endif
+    </x-ui.modal>
+
+    <!-- Reusable Image Editor Component -->
+    <x-ui.image-editor />
 </div>
