@@ -81,6 +81,12 @@
                 :error="$errors->first('password_confirmation')"
             />
 
+            <x-captcha action="register" />
+
+            @if ($errors->has('captcha'))
+                <p class="text-xs text-rose-500 font-medium">{{ $errors->first('captcha') }}</p>
+            @endif
+
             <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold" data-test="register-user-button">
                 {{ __('Create account') }}
             </x-ui.button>

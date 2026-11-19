@@ -24,7 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         )
         ->name('security.edit');
 
-    Route::middleware('can:settings.general')->group(function () {
+    Route::middleware(['admin', 'can:settings.general'])->group(function () {
         Route::livewire('settings/teams', 'pages::teams.index')->name('teams.index');
 
         Route::middleware(EnsureTeamMembership::class)->group(function () {

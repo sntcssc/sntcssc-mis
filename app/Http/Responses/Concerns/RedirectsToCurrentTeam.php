@@ -23,16 +23,6 @@ trait RedirectsToCurrentTeam
 
         abort_if(! $user, 403);
 
-        $team = $user->currentTeam ?? $user->personalTeam() ?? $user->allTeams()->first();
-
-        if (! $team) {
-            $team = $user->ownedTeams()->create([
-                'name' => $user->name."'s Team",
-                'personal_team' => true,
-            ]);
-            $user->switchTeam($team);
-        }
-
-        return $team;
+        return $user->ensureCurrentTeam();
     }
 }

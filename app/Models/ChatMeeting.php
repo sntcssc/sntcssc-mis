@@ -29,6 +29,8 @@ class ChatMeeting extends Model
 
     public const ACCESS_INVITED_ONLY = 'invited_only';
 
+    public const ACCESS_PASSCODE = 'passcode';
+
     public const STATUS_SCHEDULED = 'scheduled';
 
     public const STATUS_LIVE = 'live';
@@ -246,6 +248,41 @@ class ChatMeeting extends Model
     public function getJoinUrlAttribute(): string
     {
         return url('/meetings/join/'.$this->invite_code);
+    }
+
+    public function getWaitingRoomEnabledAttribute(): bool
+    {
+        return (bool) ($this->settings['waiting_room_enabled'] ?? false) || $this->access_mode === self::ACCESS_INVITED_ONLY;
+    }
+
+    public function getAllowScreenShareAttribute(): bool
+    {
+        return (bool) ($this->settings['screen_share_enabled'] ?? true);
+    }
+
+    public function getMuteUponEntryAttribute(): bool
+    {
+        return (bool) ($this->settings['mute_upon_entry'] ?? false);
+    }
+
+    public function getLockMeetingAttribute(): bool
+    {
+        return (bool) ($this->settings['lock_meeting'] ?? false);
+    }
+
+    public function getRequirePasscodeAttribute(): bool
+    {
+        return ! empty($this->passcode);
+    }
+
+    public function getStartTimeAttribute(): ?\DateTimeInterface
+    {
+        return $this->scheduled_at ?? $this->started_at;
+    }
+
+    public function getMeetingTypeAttribute(): string
+    {
+        return $this->type ?? self::TYPE_SCHEDULED;
     }
 
     public function formattedScheduledAt(): string

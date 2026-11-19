@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\Captcha\CaptchaService;
 use App\Services\EmailService;
 use App\Services\OtpService;
 use App\Services\SmsService;
@@ -27,6 +28,15 @@ class OtpPasswordResetController extends Controller
      */
     public function sendOtp(Request $request): JsonResponse|RedirectResponse
     {
+        if (CaptchaService::isEnabled('forgot_password')) {
+            $captchaResult = CaptchaService::verifyRequest($request, 'forgot_password');
+            if ($captchaResult->isFailure()) {
+                throw ValidationException::withMessages([
+                    'captcha' => [$captchaResult->message ?? __('Security verification failed. Please try again.')],
+                ]);
+            }
+        }
+
         $validated = $request->validate([
             'identifier' => ['required', 'string', 'max:100'],
         ]);

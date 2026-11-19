@@ -4,7 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>{{ $title }}</title>
     <style>
-        body { font-family: sans-serif; font-size: 11px; color: #1f2937; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 10px; color: #1f2937; }
         h1 { font-size: 16px; margin: 0 0 2px; }
         .meta { color: #6b7280; font-size: 9px; margin-bottom: 12px; }
         table { width: 100%; border-collapse: collapse; }

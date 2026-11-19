@@ -20,6 +20,8 @@ class MeetingJoinController extends Controller
             return redirect()->route('login')->with('error', __('Please login to join this meeting.'));
         }
 
+        abort_unless($user->can('meetings.view') || $user->hasRole('Super Administrator'), 403, __('You do not have permission to access online meetings.'));
+
         try {
             $meeting = ChatMeeting::where('invite_code', trim($code))->first();
 

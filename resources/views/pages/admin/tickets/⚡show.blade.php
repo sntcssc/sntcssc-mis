@@ -35,11 +35,23 @@ new #[Layout('layouts.app')] #[Title('Ticket Desk Workspace')] class extends Com
     {
         if ($ticket instanceof Ticket) {
             $this->ticket = $ticket;
+            $this->ticket->loadMissing([
+                'category',
+                'assignedTo',
+                'user.studentProfile',
+                'user.enrollments.batch',
+                'user.enrollments.course',
+                'attachments.uploader',
+                'messages.user',
+                'messages.attachments',
+            ]);
         } else {
             $this->ticket = Ticket::with([
                 'category',
                 'assignedTo',
-                'user.studentProfile.enrollments.batch.course',
+                'user.studentProfile',
+                'user.enrollments.batch',
+                'user.enrollments.course',
                 'attachments.uploader',
                 'messages.user',
                 'messages.attachments',
@@ -525,11 +537,30 @@ new #[Layout('layouts.app')] #[Title('Ticket Desk Workspace')] class extends Com
                     @endif
 
                     @if ($ticket->user)
-                        <div class="pt-2 border-t border-border space-y-1">
+                        <div class="pt-2 border-t border-border space-y-1.5">
                             <span class="text-[10px] uppercase font-semibold text-muted-foreground">{{ __('Account Status') }}</span>
                             <div class="text-[11px] text-foreground">
                                 {{ __('Registered User') }} &bull; {{ $ticket->user->created_at->format('d M Y') }}
                             </div>
+
+                            @if ($ticket->user->student_id)
+                                <div class="text-[11px] text-foreground flex items-center gap-1.5">
+                                    <span class="text-muted-foreground">{{ __('Student ID:') }}</span>
+                                    <span class="font-mono font-semibold">{{ $ticket->user->student_id }}</span>
+                                </div>
+                            @endif
+
+                            @if ($ticket->user->enrollments && $ticket->user->enrollments->isNotEmpty())
+                                <div class="pt-1 space-y-1">
+                                    <span class="text-[10px] uppercase font-semibold text-muted-foreground">{{ __('Enrollments') }}</span>
+                                    @foreach ($ticket->user->enrollments->take(3) as $enr)
+                                        <div class="text-[11px] text-foreground bg-secondary/40 px-2 py-1 rounded flex items-center justify-between gap-1">
+                                            <span class="font-medium truncate max-w-[140px]">{{ $enr->course?->name ?? $enr->batch?->name ?? __('Course') }}</span>
+                                            <span class="text-[10px] px-1 rounded bg-secondary capitalize shrink-0">{{ $enr->status }}</span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
                     @endif
                 </div>

@@ -78,6 +78,7 @@ test('roles livewire component interacts properly with permissions toggles', fun
 
 test('my activity component displays user timeline', function () {
     $user = User::factory()->create();
+    $user->givePermissionTo('activity.view');
 
     AuditLogService::log(
         event: 'login',
@@ -174,5 +175,5 @@ test('header topbar renders uploaded avatar image for authenticated user', funct
     $view = (string) $this->actingAs($user)->blade("@include('layouts.app.topbar')");
 
     expect($view)->toContain('sample_user_avatar.webp')
-        ->and($view)->toContain($user->name);
+        ->and($view)->toContain(e($user->name));
 });

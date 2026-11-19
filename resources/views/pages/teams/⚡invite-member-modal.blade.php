@@ -21,11 +21,13 @@ new class extends Component {
 
     public function mount(Team $team): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         $this->team = $team;
     }
 
     public function createInvitation(): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         Gate::authorize('inviteMember', $this->team);
 
         $validated = $this->validate([

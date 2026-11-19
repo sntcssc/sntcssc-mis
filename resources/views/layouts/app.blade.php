@@ -81,15 +81,45 @@
             </div>
         </div>
 
-        <livewire:create-team-modal/>
-        <livewire:chat-call-overlay/>
+        @if (auth()->user()?->isAdmin())
+            <livewire:create-team-modal/>
+        @endif
+        @php
+            $canUseChat = \App\Models\Setting::get('chat.enabled', true) && auth()->user() && (auth()->user()->can('chat.access') || auth()->user()->hasRole('Super Administrator'));
+        @endphp
+        @if ($canUseChat)
+            <livewire:chat-call-overlay/>
+        @endif
+        <livewire:global-search-modal/>
 
         {{-- Global Livewire File Upload Progress Indicator --}}
         <div
-            x-data="{ uploading: false, progress: 0 }"
-            x-on:livewire-upload-start.window="uploading = true; progress = 0;"
-            x-on:livewire-upload-finish.window="uploading = false;"
-            x-on:livewire-upload-error.window="uploading = false;"
+            x-data="{
+                uploading: false,
+                progress: 0,
+                componentId: null,
+                property: null,
+                cancel() {
+                    if (this.componentId && this.property && window.Livewire) {
+                        try {
+                            const comp = window.Livewire.find(this.componentId);
+                            if (comp && typeof comp.$cancelUpload === 'function') {
+                                comp.$cancelUpload(this.property);
+                            }
+                        } catch (e) {
+                            console.error('Failed to cancel file upload', e);
+                        }
+                    }
+                    this.uploading = false;
+                    this.progress = 0;
+                    this.componentId = null;
+                    this.property = null;
+                }
+            }"
+            x-on:livewire-upload-start.window="uploading = true; progress = 0; componentId = $event.detail.id; property = $event.detail.property;"
+            x-on:livewire-upload-finish.window="uploading = false; componentId = null; property = null;"
+            x-on:livewire-upload-error.window="uploading = false; componentId = null; property = null;"
+            x-on:livewire-upload-cancel.window="uploading = false; componentId = null; property = null;"
             x-on:livewire-upload-progress.window="progress = $event.detail.progress;"
             x-show="uploading"
             x-transition:enter="transition ease-out duration-200"
@@ -111,6 +141,14 @@
                     <div class="bg-primary h-1.5 rounded-full transition-all duration-150" :style="`width: ${progress}%`"></div>
                 </div>
             </div>
+            <button
+                type="button"
+                x-on:click="cancel()"
+                class="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors cursor-pointer ml-1"
+                title="{{ __('Cancel upload') }}"
+            >
+                <x-icon name="x" class="h-4 w-4"/>
+            </button>
         </div>
 
         <x-ui.toasts/>

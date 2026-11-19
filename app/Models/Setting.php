@@ -193,10 +193,10 @@ class Setting extends Model
             $setting->created_by = $userId;
         }
 
-        $setting->type ??= self::TYPE_STRING;
+        $setting->type ??= is_bool($value) ? self::TYPE_BOOLEAN : (is_array($value) ? self::TYPE_JSON : self::TYPE_STRING);
         $setting->status ??= true;
 
-        $setting->value = is_array($value) ? json_encode($value) : (string) $value;
+        $setting->value = is_array($value) ? json_encode($value) : (is_bool($value) ? ($value ? '1' : '0') : (string) $value);
         $setting->updated_by = $userId;
         $setting->save();
 
@@ -267,6 +267,20 @@ class Setting extends Model
         }
 
         return $fallback ? '/favicon.ico' : null;
+    }
+
+    /**
+     * Resolve the public URL of the OpenGraph social share image.
+     */
+    public static function ogImageUrl(): ?string
+    {
+        $ogImage = static::get('seo.og_image');
+
+        if ($ogImage) {
+            return FileUploadService::url((string) $ogImage);
+        }
+
+        return static::logoUrl();
     }
 
     /**

@@ -22,6 +22,8 @@ class ChatJoinController extends Controller
             return redirect()->route('login')->with('error', __('Please login to join this conversation.'));
         }
 
+        abort_unless($user->can('chat.access') || $user->hasRole('Super Administrator'), 403, __('You do not have permission to access live chat.'));
+
         $conversation = ChatConversation::where('invite_code', $code)->first();
 
         if (! $conversation) {

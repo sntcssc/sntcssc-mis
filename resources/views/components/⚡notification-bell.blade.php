@@ -10,7 +10,6 @@ use Livewire\Component;
 
 new class extends Component {
     public string $activeTab = 'all'; // all, unread, ticket, system, chat, call
-    public bool $isOpen = false;
     public int $previousUnreadCount = 0;
     public bool $soundMuted = false;
     public int $unreadCount = 0;
@@ -26,7 +25,11 @@ new class extends Component {
 
     public function rendering(): void
     {
+        $prev = $this->unreadCount;
         $this->refreshState();
+        if ($this->unreadCount > $prev && $prev > 0 && $this->soundEnabled) {
+            $this->dispatch('play-notification-chime');
+        }
     }
 
     public function refreshState(): void
@@ -141,16 +144,8 @@ new class extends Component {
 
 <div
     x-data="{
-        open: false,
-        get unread() {
-            return this.$wire?.unreadCount ?? 0;
-        },
-        get soundEnabled() {
-            return this.$wire?.soundEnabled ?? true;
-        },
-        prevUnread: 0,
+        drawerOpen: false,
         playChime() {
-            if (!this.soundEnabled) return;
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return;
@@ -160,7 +155,7 @@ new class extends Component {
                 const osc1 = ctx.createOscillator();
                 const gain1 = ctx.createGain();
                 osc1.type = 'sine';
-                osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                osc1.frequency.setValueAtTime(880, ctx.currentTime);
                 osc1.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.35);
                 gain1.gain.setValueAtTime(0.2, ctx.currentTime);
                 gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
@@ -173,7 +168,7 @@ new class extends Component {
                 const osc2 = ctx.createOscillator();
                 const gain2 = ctx.createGain();
                 osc2.type = 'triangle';
-                osc2.frequency.setValueAtTime(1320, ctx.currentTime + 0.08); // E6
+                osc2.frequency.setValueAtTime(1320, ctx.currentTime + 0.08);
                 osc2.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.45);
                 gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.08);
                 gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
@@ -184,39 +179,27 @@ new class extends Component {
             } catch (e) {
                 console.debug('Audio chime suppressed by browser policy', e);
             }
-        },
-        init() {
-            if (typeof this.$cleanup === 'function') {
-                this.$cleanup(() => {
-                    this.open = false;
-                });
+
+            if (window.Notification && Notification.permission === 'granted' && document.hidden) {
+                try {
+                    new Notification('{{ addslashes(\App\Models\Setting::appName()) }}', {
+                        body: '{{ __('You have a new notification.') }}',
+                        icon: '{{ \App\Models\Setting::faviconUrl() ?? '/favicon.ico' }}'
+                    });
+                } catch (e) {}
             }
-            this.prevUnread = this.unread;
-            this.$watch('$wire.unreadCount', (val) => {
-                if (val > this.prevUnread && val > 0) {
-                    this.playChime();
-                    if (window.Notification && Notification.permission === 'granted' && document.hidden) {
-                        try {
-                            new Notification('{{ \App\Models\Setting::appName() }}', {
-                                body: 'You have ' + val + ' unread notification(s)',
-                                icon: '{{ \App\Models\Setting::faviconUrl() ?? '/favicon.ico' }}'
-                            });
-                        } catch (e) {}
-                    }
-                }
-                this.prevUnread = val;
-            });
         }
     }"
-    @keydown.escape.window="open = false"
-    @click.outside="open = false"
+    @keydown.escape.window="drawerOpen = false"
+    @click.outside="drawerOpen = false"
+    @play-notification-chime.window="playChime()"
     @if ($this->pollInterval) wire:poll.visible.{{ $this->pollInterval }} @endif
     class="relative inline-block text-left"
 >
     <!-- Bell Trigger Button -->
     <button
         type="button"
-        @click="open = !open"
+        @click="drawerOpen = !drawerOpen"
         class="relative flex h-9 w-9 items-center justify-center rounded-lg hover:bg-secondary transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
         aria-label="{{ __('Notifications') }}"
     >
@@ -231,7 +214,7 @@ new class extends Component {
 
     <!-- Slide-over / Dropdown Drawer -->
     <div
-        x-show="open"
+        x-show="drawerOpen"
         x-transition:enter="transition ease-out duration-150"
         x-transition:enter-start="opacity-0 scale-95 -translate-y-2"
         x-transition:enter-end="opacity-100 scale-100 translate-y-0"
@@ -405,7 +388,7 @@ new class extends Component {
             <a
                 href="{{ $inboxUrl }}"
                 wire:navigate
-                @click="open = false"
+                @click="drawerOpen = false"
                 class="font-medium text-primary hover:underline flex items-center gap-1.5"
             >
                 <span>{{ __('Open Notification Inbox') }}</span>
@@ -419,7 +402,7 @@ new class extends Component {
                 <a
                     href="{{ $settingsUrl }}"
                     wire:navigate
-                    @click="open = false"
+                    @click="drawerOpen = false"
                     class="text-muted-foreground hover:text-foreground flex items-center gap-1"
                     title="{{ __('Notification Settings') }}"
                 >

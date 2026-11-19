@@ -4,14 +4,20 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Services\RbacService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
+
+beforeEach(function () {
+    RbacService::seedDefaults();
+});
 
 test('team invitations can be created', function () {
     Notification::fake();
 
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -33,7 +39,9 @@ test('team invitations can be created', function () {
 
 test('team invitations cannot be created by members', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $member = User::factory()->create();
+    $member->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -50,6 +58,7 @@ test('team invitations cannot be created by members', function () {
 
 test('team invitations can be cancelled by owner', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -73,7 +82,9 @@ test('team invitations can be cancelled by owner', function () {
 
 test('team invitations can be accepted', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -101,7 +112,9 @@ test('team invitations can be accepted', function () {
 
 test('accepted team invitations cannot be accepted again', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -122,6 +135,7 @@ test('accepted team invitations cannot be accepted again', function () {
 
 test('accepted invitation toast is shown on the dashboard', function () {
     $user = User::factory()->create();
+    $user->assignRole('Administrator');
 
     session()->flash('team-invitation-accepted', true);
 
@@ -133,7 +147,9 @@ test('accepted invitation toast is shown on the dashboard', function () {
 
 test('pending invitations excludes expired invitations without deleting them', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser->assignRole('Administrator');
     $team = Team::factory()->create(['name' => 'Expired Team']);
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -156,7 +172,9 @@ test('pending invitations excludes expired invitations without deleting them', f
 
 test('team invitations cannot be accepted by user that wasnt invited', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $uninvitedUser = User::factory()->create(['email' => 'uninvited@example.com']);
+    $uninvitedUser->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -179,7 +197,9 @@ test('team invitations cannot be accepted by user that wasnt invited', function 
 
 test('expired invitations cannot be accepted', function () {
     $owner = User::factory()->create();
+    $owner->assignRole('Administrator');
     $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser->assignRole('Administrator');
     $team = Team::factory()->create();
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);

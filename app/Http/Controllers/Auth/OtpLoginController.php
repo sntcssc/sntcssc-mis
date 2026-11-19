@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\Captcha\CaptchaService;
 use App\Services\EmailService;
 use App\Services\OtpService;
 use App\Services\SmsService;
@@ -28,6 +29,15 @@ class OtpLoginController extends Controller
      */
     public function sendOtp(Request $request): JsonResponse|RedirectResponse
     {
+        if (CaptchaService::isEnabled('login')) {
+            $captchaResult = CaptchaService::verifyRequest($request, 'login');
+            if ($captchaResult->isFailure()) {
+                throw ValidationException::withMessages([
+                    'captcha' => [$captchaResult->message ?? __('Security verification failed. Please try again.')],
+                ]);
+            }
+        }
+
         $validated = $request->validate([
             'identifier' => ['required', 'string', 'max:100'],
         ]);
@@ -123,7 +133,8 @@ class OtpLoginController extends Controller
         $request->session()->regenerate();
 
         // Determine redirect destination
-        $redirectUrl = route('dashboard', ['current_team' => $user->current_team_id ?: $user->personalTeam()?->id]);
+        $team = $user->ensureCurrentTeam();
+        $redirectUrl = route('dashboard', ['current_team' => $team->slug]);
 
         if (is_null($user->email_verified_at)) {
             $redirectUrl = route('verification.notice');

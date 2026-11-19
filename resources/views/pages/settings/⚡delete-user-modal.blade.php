@@ -2,6 +2,7 @@
 
 use App\Concerns\PasswordValidationRules;
 use App\Livewire\Actions\Logout;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
@@ -15,6 +16,10 @@ new class extends Component {
      */
     public function deleteUser(Logout $logout): void
     {
+        if (! (bool) Setting::get('system.allow_account_deletion', false)) {
+            abort(403, __('Account self-deletion is disabled in system settings. Please contact an administrator.'));
+        }
+
         $this->validate([
             'password' => $this->currentPasswordRules(),
         ]);

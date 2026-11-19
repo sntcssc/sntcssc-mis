@@ -54,10 +54,18 @@ class SetAppLocale
             config(['app.fallback_locale' => $fallbackLocale]);
         }
 
-        $locale = $request->session()->get('locale') ?? $request->cookie('locale');
+        $sessionLocale = $request->hasSession() ? $request->session()->get('locale') : null;
+
+        $locale = $sessionLocale
+            ?? $request->user()?->getPreference('locale')
+            ?? $request->cookie('locale');
 
         if (! $locale || ! in_array($locale, $supported, true)) {
             $locale = in_array($defaultLocale, $supported, true) ? $defaultLocale : 'en';
+        }
+
+        if ($request->hasSession() && ! $request->session()->has('locale') && $request->user()?->getPreference('locale')) {
+            $request->session()->put('locale', $locale);
         }
 
         App::setLocale($locale);

@@ -32,6 +32,9 @@ new #[Layout('layouts.public')] #[Title('Contact Us')] class extends Component {
     public bool $isSubmitted = false;
     public ?string $submittedReferenceNo = null;
 
+    public ?string $captcha_token = null;
+    public ?string $captcha_answer = null;
+
     #[Computed]
     public function departments()
     {
@@ -54,7 +57,7 @@ new #[Layout('layouts.public')] #[Title('Contact Us')] class extends Component {
         $this->form['subject_id'] = '';
     }
 
-    public function submit(): void
+    public function submit(?string $captcha_token = null, ?string $captcha_answer = null, ?string $recaptcha_response = null): void
     {
         // Bot honeypot trap
         if (! empty($this->website_url_hp)) {
@@ -62,6 +65,28 @@ new #[Layout('layouts.public')] #[Title('Contact Us')] class extends Component {
             $this->submittedReferenceNo = 'SNT-REQ-'.date('Y').'-'.strtoupper(bin2hex(random_bytes(3)));
 
             return;
+        }
+
+        if (\App\Services\Captcha\CaptchaService::isEnabled('contact')) {
+            $token = $captcha_token ?: $this->captcha_token ?: $recaptcha_response ?: request('captcha_token');
+            $answer = $captcha_answer ?: $this->captcha_answer ?: request('captcha_answer');
+
+            $captchaResult = \App\Services\Captcha\CaptchaService::verifyRequest(
+                request(),
+                'contact',
+                [
+                    'token' => $token,
+                    'answer' => $answer,
+                    'g-recaptcha-response' => $recaptcha_response,
+                ]
+            );
+
+            if ($captchaResult->isFailure()) {
+                $this->addError('captcha', $captchaResult->message ?? __('Security verification failed. Please try again.'));
+                $this->dispatch('captcha-refresh');
+
+                return;
+            }
         }
 
         $this->validate([
@@ -228,7 +253,11 @@ new #[Layout('layouts.public')] #[Title('Contact Us')] class extends Component {
                         </div>
                     @else
                         {{-- Interactive Contact Form --}}
-                        <form wire:submit="submit" class="space-y-5">
+                        <form
+                            x-data
+                            x-on:submit.prevent="$wire.submit(new FormData($el).get('captcha_token'), new FormData($el).get('captcha_answer'), new FormData($el).get('g-recaptcha-response'))"
+                            class="space-y-5"
+                        >
                             {{-- Bot honeypot field (hidden) --}}
                             <div class="hidden" aria-hidden="true">
                                 <input type="text" wire:model="website_url_hp" tabindex="-1" autocomplete="off">
@@ -361,6 +390,12 @@ new #[Layout('layouts.public')] #[Title('Contact Us')] class extends Component {
                                 ></textarea>
                                 @error('form.message') <p class="mt-1 text-xs text-destructive">{{ $message }}</p> @enderror
                             </div>
+
+                            {{-- Captcha Protection --}}
+                            <div wire:ignore class="space-y-1" x-on:captcha-refresh.window="$el.querySelector('.captcha-refresh-btn')?.click()">
+                                <x-captcha action="contact" />
+                            </div>
+                            @error('captcha') <p class="text-xs text-destructive font-medium">{{ $message }}</p> @enderror
 
                             {{-- Submit Button --}}
                             <div class="pt-2">

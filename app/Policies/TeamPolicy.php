@@ -9,11 +9,24 @@ use App\Models\User;
 class TeamPolicy
 {
     /**
+     * Perform pre-authorization checks.
+     * All team functionality is strictly restricted to administrators.
+     */
+    public function before(User $user, string $ability): ?bool
+    {
+        if (! $user->isAdmin()) {
+            return false;
+        }
+
+        return null;
+    }
+
+    /**
      * Determine whether the user can view any models.
      */
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->isAdmin();
     }
 
     /**
@@ -21,7 +34,7 @@ class TeamPolicy
      */
     public function view(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->belongsToTeam($team));
     }
 
     /**
@@ -29,7 +42,7 @@ class TeamPolicy
      */
     public function create(User $user): bool
     {
-        return true;
+        return $user->isAdmin();
     }
 
     /**
@@ -37,7 +50,7 @@ class TeamPolicy
      */
     public function update(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::UpdateTeam);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::UpdateTeam));
     }
 
     /**
@@ -45,7 +58,8 @@ class TeamPolicy
      */
     public function leave(User $user, Team $team): bool
     {
-        return ! $team->is_personal
+        return $user->isAdmin()
+            && ! $team->is_personal
             && $user->belongsToTeam($team)
             && ! $user->ownsTeam($team);
     }
@@ -55,7 +69,7 @@ class TeamPolicy
      */
     public function addMember(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::AddMember);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::AddMember));
     }
 
     /**
@@ -63,7 +77,7 @@ class TeamPolicy
      */
     public function updateMember(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::UpdateMember);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::UpdateMember));
     }
 
     /**
@@ -71,7 +85,7 @@ class TeamPolicy
      */
     public function removeMember(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::RemoveMember);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::RemoveMember));
     }
 
     /**
@@ -79,7 +93,7 @@ class TeamPolicy
      */
     public function inviteMember(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::CreateInvitation);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::CreateInvitation));
     }
 
     /**
@@ -87,7 +101,7 @@ class TeamPolicy
      */
     public function cancelInvitation(User $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::CancelInvitation);
+        return $user->isAdmin() && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::CancelInvitation));
     }
 
     /**
@@ -95,6 +109,8 @@ class TeamPolicy
      */
     public function delete(User $user, Team $team): bool
     {
-        return ! $team->is_personal && $user->hasTeamPermission($team, TeamPermission::DeleteTeam);
+        return $user->isAdmin()
+            && ! $team->is_personal
+            && ($user->hasRole('Super Administrator') || $user->hasTeamPermission($team, TeamPermission::DeleteTeam));
     }
 }

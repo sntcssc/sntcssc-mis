@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -67,6 +68,8 @@ class Subscriber extends Model
     public const SOURCE_COURSE = 'course_inquiry';
 
     public const SOURCE_CHECKOUT = 'checkout';
+
+    public const SOURCE_STUDY_MATERIAL = 'study_material_download';
 
     protected $fillable = [
         'uuid',
@@ -216,5 +219,10 @@ class Subscriber extends Model
     public function unsubscribeUrl(): string
     {
         return url('/unsubscribe/'.$this->unsubscribe_token);
+    }
+
+    public function studyMaterialAccessLogs(): HasMany
+    {
+        return $this->hasMany(StudyMaterialAccessLog::class);
     }
 }

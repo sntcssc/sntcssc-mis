@@ -1,10 +1,13 @@
 @props([
     'color' => 'secondary',
+    'variant' => null,
 ])
 
 @php
+    $resolvedColor = $variant ?? $color;
     $colorMap = [
         'primary' => 'bg-primary/15 text-primary border-0',
+        'default' => 'bg-primary/15 text-primary border-0',
         'success' => 'bg-emerald-500/15 text-emerald-500 border-0',
         'emerald' => 'bg-emerald-500/15 text-emerald-500 border-0',
         'warning' => 'bg-amber-500/15 text-amber-500 border-0',
@@ -20,7 +23,7 @@
         'secondary' => 'bg-secondary text-muted-foreground border-0',
         'outline' => 'text-muted-foreground',
     ];
-    $colorClass = $colorMap[$color] ?? $colorMap['secondary'];
+    $colorClass = $colorMap[$resolvedColor] ?? $colorMap['secondary'];
 @endphp
 
 <span

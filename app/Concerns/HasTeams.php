@@ -2,6 +2,7 @@
 
 namespace App\Concerns;
 
+use App\Actions\Teams\CreateTeam;
 use App\Data\TeamPermissions;
 use App\Data\UserTeam;
 use App\Enums\TeamPermission;
@@ -27,6 +28,86 @@ trait HasTeams
         return $this->belongsToMany(Team::class, 'team_members', 'user_id', 'team_id')
             ->withPivot(['role'])
             ->withTimestamps();
+    }
+
+    /**
+     * Get a collection of all the teams the user belongs to.
+     *
+     * @return Collection<int, Team>
+     */
+    public function allTeams(): Collection
+    {
+        return $this->teams()->get();
+    }
+
+    /**
+     * Assign the user to an existing team.
+     */
+    public function assignToTeam(Team $team, TeamRole $role = TeamRole::Member): bool
+    {
+        $team->members()->syncWithoutDetaching([
+            $this->id => ['role' => $role->value],
+        ]);
+
+        return $this->switchTeam($team);
+    }
+
+    /**
+     * Create a personal team for the user.
+     */
+    public function createPersonalTeam(?string $name = null): Team
+    {
+        return app(CreateTeam::class)->handle(
+            $this,
+            $name ?? ($this->name ? "{$this->name}'s Team" : 'Personal Team'),
+            isPersonal: true
+        );
+    }
+
+    /**
+     * Ensure the user has an active current team, assigning to an existing team if none exists.
+     */
+    public function ensureCurrentTeam(): Team
+    {
+        if ($this->current_team_id && $this->relationLoaded('currentTeam') && $this->currentTeam) {
+            URL::defaults([
+                'current_team' => $this->currentTeam->slug,
+                'team' => $this->currentTeam->slug,
+            ]);
+
+            return $this->currentTeam;
+        }
+
+        if ($this->current_team_id && ($team = $this->currentTeam()->first())) {
+            $this->setRelation('currentTeam', $team);
+            URL::defaults([
+                'current_team' => $team->slug,
+                'team' => $team->slug,
+            ]);
+
+            return $team;
+        }
+
+        $team = $this->personalTeam() ?? $this->teams()->first();
+
+        if (! $team) {
+            $existingTeam = Team::where('slug', 'sntcssc')
+                ->orWhere('slug', 'super-admins-team')
+                ->orWhere('is_personal', false)
+                ->oldest('id')
+                ->first() ?? Team::oldest('id')->first();
+
+            if ($existingTeam) {
+                $this->assignToTeam($existingTeam, TeamRole::Member);
+                $team = $existingTeam;
+            } else {
+                $team = $this->createPersonalTeam();
+            }
+        } else {
+            $this->switchTeam($team);
+        }
+
+        return $team;
     }
 
     /**
@@ -72,6 +153,7 @@ trait HasTeams
     public function personalTeam(): ?Team
     {
         return $this->teams()
+            ->wherePivot('role', TeamRole::Owner->value)
             ->where('is_personal', true)
             ->first();
     }
@@ -88,7 +170,10 @@ trait HasTeams
         $this->update(['current_team_id' => $team->id]);
         $this->setRelation('currentTeam', $team);
 
-        URL::defaults(['current_team' => $team->slug]);
+        URL::defaults([
+            'current_team' => $team->slug,
+            'team' => $team->slug,
+        ]);
 
         return true;
     }
@@ -165,6 +250,18 @@ trait HasTeams
      */
     public function toTeamPermissions(Team $team): TeamPermissions
     {
+        if (! $this->isAdmin()) {
+            return new TeamPermissions(
+                canUpdateTeam: false,
+                canDeleteTeam: false,
+                canAddMember: false,
+                canUpdateMember: false,
+                canRemoveMember: false,
+                canCreateInvitation: false,
+                canCancelInvitation: false,
+            );
+        }
+
         $role = $this->teamRole($team);
 
         return new TeamPermissions(
@@ -191,6 +288,10 @@ trait HasTeams
      */
     public function hasTeamPermission(Team $team, TeamPermission $permission): bool
     {
+        if (! $this->isAdmin()) {
+            return false;
+        }
+
         return $this->teamRole($team)?->hasPermission($permission) ?? false;
     }
 }

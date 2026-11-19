@@ -54,6 +54,11 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
 
     public function mount(string $uuid): void
     {
+        $enabled = (bool) Setting::get('meeting.enabled', Setting::get('chat.meetings_enabled', true));
+        if (! $enabled && ! auth()->user()?->hasRole('Super Administrator')) {
+            abort(403, __('Online meetings are currently disabled by administrator.'));
+        }
+
         $this->uuid = $uuid;
         $this->lastReactionTimestamp = microtime(true) - 1.0;
         $this->meeting = ChatMeeting::where('uuid', $uuid)->with(['host', 'participants.user'])->firstOrFail();
@@ -61,6 +66,10 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
         $user = auth()->user();
         if (! $user) {
             return;
+        }
+
+        if (! $this->meeting->isHost($user) && ! $user->can('meetings.view') && ! $user->hasRole('Super Administrator')) {
+            abort(403, __('You do not have permission to access online meetings.'));
         }
 
         if ($this->meeting->isEnded() || $this->meeting->isCancelled()) {
@@ -707,6 +716,7 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
             'activeParticipants' => $activeParticipants,
             'waitingParticipants' => $waitingParticipants,
             'pollInterval' => $pollInterval,
+            'transportDriver' => $transportDriver,
         ];
     }
 };
@@ -1024,18 +1034,30 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
                     @endif
                 </div>
 
-                <!-- Live WebSocket Status Indicator -->
-                <div
-                    class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
-                    :class="websocketConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'"
-                    :title="websocketConnected ? '{{ __('Real-time WebSocket Live (Laravel Reverb)') }}' : '{{ __('WebSocket Disconnected / Reconnecting') }}'"
-                >
-                    <span class="relative flex h-2 w-2">
-                        <span x-show="websocketConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2 w-2" :class="websocketConnected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
-                    </span>
-                    <span x-text="websocketConnected ? '{{ __('Reverb Live') }}' : '{{ __('Offline') }}'"></span>
-                </div>
+                <!-- Live WebSocket / Polling Status Indicator -->
+                @if ($transportDriver === 'polling')
+                    <div
+                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-sky-500/10 text-sky-400 border-sky-500/20 transition-colors"
+                        title="{{ __('Meeting state updates via Livewire Polling (:rate)', ['rate' => $pollInterval]) }}"
+                    >
+                        <span class="relative flex h-2 w-2">
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                        </span>
+                        <span>{{ __('Polling (:rate)', ['rate' => $pollInterval]) }}</span>
+                    </div>
+                @else
+                    <div
+                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
+                        :class="websocketConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'"
+                        :title="websocketConnected ? '{{ __('Real-time WebSocket Live (Laravel Reverb)') }}' : '{{ __('WebSocket Disconnected / Reconnecting') }}'"
+                    >
+                        <span class="relative flex h-2 w-2">
+                            <span x-show="websocketConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2" :class="websocketConnected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                        </span>
+                        <span x-text="websocketConnected ? '{{ __('Reverb Live') }}' : '{{ __('Offline') }}'"></span>
+                    </div>
+                @endif
 
                 <!-- Sound Notification Toggle -->
                 <button
@@ -2022,7 +2044,7 @@ new #[Layout('layouts.app')] #[Title('Meeting Room')] class extends Component {
                             />
                             <button
                                 type="button"
-                                x-on:click="navigator.clipboard.writeText('{{ $meeting->join_url }}'); if (window.Alpine && Alpine.store('toasts')) { Alpine.store('toasts').add('success', '{{ __('Meeting link copied!') }}'); } else { alert('{{ __('Meeting link copied!') }}'); }"
+                                x-on:click="navigator.clipboard.writeText('{{ $meeting->join_url }}'); if (window.Alpine && Alpine.store('toasts')) { Alpine.store('toasts').add('success', '{{ __('Meeting link copied!') }}'); } else { window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: '{{ __('Meeting link copied!') }}' } })); }"
                                 class="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 cursor-pointer"
                                 title="{{ __('Copy Link') }}"
                             >

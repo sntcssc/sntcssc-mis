@@ -20,6 +20,9 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
     #[Url(as: 'event')]
     public string $eventFilter = '';
 
+    #[Url(as: 'user')]
+    public ?int $userFilter = null;
+
     #[Url(as: 'from')]
     public ?string $dateFrom = null;
 
@@ -31,6 +34,57 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
     public ?int $selectedLogId = null;
     public ?AuditLog $selectedLog = null;
 
+    public function mount(): void
+    {
+        $user = Auth::user();
+        if (! $user?->can('activity.view') && ! ($user?->isAdmin() ?? false)) {
+            abort(403, __('You do not have permission to access the activity page.'));
+        }
+
+        if (! $this->isAdmin) {
+            // Strictly enforce self-activity only for non-admin users
+            $this->userFilter = Auth::id();
+        }
+    }
+
+    #[Computed]
+    public function isAdmin(): bool
+    {
+        return Auth::user()?->isAdmin() ?? false;
+    }
+
+    #[Computed]
+    public function effectiveUserId(): ?int
+    {
+        if (! $this->isAdmin) {
+            return Auth::id();
+        }
+
+        return $this->userFilter;
+    }
+
+    #[Computed]
+    public function targetUser(): ?User
+    {
+        $id = $this->effectiveUserId;
+
+        return $id ? User::find($id) : null;
+    }
+
+    #[Computed]
+    public function availableUsers()
+    {
+        if (! $this->isAdmin) {
+            return collect();
+        }
+
+        return User::query()
+            ->select(['id', 'name', 'email'])
+            ->orderBy('name')
+            ->limit(200)
+            ->get();
+    }
+
     public function updatedSearch(): void
     {
         $this->resetPage();
@@ -38,6 +92,14 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
 
     public function updatedEventFilter(): void
     {
+        $this->resetPage();
+    }
+
+    public function updatedUserFilter(): void
+    {
+        if (! $this->isAdmin) {
+            $this->userFilter = Auth::id();
+        }
         $this->resetPage();
     }
 
@@ -54,29 +116,41 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
     public function resetFilters(): void
     {
         $this->reset(['search', 'eventFilter', 'dateFrom', 'dateTo']);
+        if ($this->isAdmin) {
+            $this->userFilter = null;
+        } else {
+            $this->userFilter = Auth::id();
+        }
         $this->resetPage();
     }
 
     #[Computed]
     public function stats(): array
     {
-        $userId = Auth::id();
+        $effectiveId = $this->effectiveUserId;
+
+        $baseQuery = AuditLog::query()->when($effectiveId, fn ($q, $id) => $q->where('user_id', $id));
+
+        $userForLogin = $effectiveId
+            ? ($effectiveId === Auth::id() ? Auth::user() : $this->targetUser)
+            : Auth::user();
 
         return [
-            'total' => AuditLog::where('user_id', $userId)->count(),
-            'logins' => AuditLog::where('user_id', $userId)->whereIn('event', ['login', 'failed_login', 'logout'])->count(),
-            'today' => AuditLog::where('user_id', $userId)->whereDate('created_at', today())->count(),
-            'last_login' => Auth::user()->last_login_at?->diffForHumans() ?? 'Current session',
+            'total' => (clone $baseQuery)->count(),
+            'logins' => (clone $baseQuery)->whereIn('event', ['login', 'failed_login', 'logout'])->count(),
+            'today' => (clone $baseQuery)->whereDate('created_at', today())->count(),
+            'last_login' => $userForLogin?->last_login_at?->diffForHumans() ?? ($effectiveId ? __('Never') : __('Current session')),
         ];
     }
 
     #[Computed]
     public function activities()
     {
-        $userId = Auth::id();
+        $effectiveId = $this->effectiveUserId;
 
         return AuditLog::query()
-            ->where('user_id', $userId)
+            ->with('user')
+            ->when($effectiveId, fn ($q, $uid) => $q->where('user_id', $uid))
             ->when($this->search, function (Builder $query, $search) {
                 $query->where(function (Builder $q) use ($search) {
                     $q->where('description', 'like', "%{$search}%")
@@ -92,8 +166,14 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
 
     public function inspect(int $id): void
     {
-        $userId = Auth::id();
-        $this->selectedLog = AuditLog::where('user_id', $userId)->findOrFail($id);
+        if (! $this->isAdmin) {
+            // Non-admin can strictly ONLY inspect their own audit log records
+            $this->selectedLog = AuditLog::where('user_id', Auth::id())->findOrFail($id);
+        } else {
+            // Admin can inspect any user's audit log record
+            $this->selectedLog = AuditLog::with('user')->findOrFail($id);
+        }
+
         $this->selectedLogId = $id;
         $this->dispatch('modal-open', name: 'activity-diff-modal');
     }
@@ -103,9 +183,23 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
     {{-- Page Header --}}
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h1 class="text-2xl font-bold tracking-tight">{{ __('My Activity & Security History') }}</h1>
+            <h1 class="text-2xl font-bold tracking-tight">
+                @if ($this->isAdmin && $this->userFilter && $this->userFilter !== auth()->id() && $this->targetUser)
+                    {{ __('Activity Log:') }} {{ $this->targetUser->name }}
+                @elseif ($this->isAdmin && ! $this->userFilter)
+                    {{ __('System User Activity & Security Trail') }}
+                @else
+                    {{ __('My Activity & Security History') }}
+                @endif
+            </h1>
             <p class="text-xs text-muted-foreground mt-1">
-                {{ __('Transparent compliance record of all your actions, session authentication events, and profile updates.') }}
+                @if ($this->isAdmin && $this->userFilter && $this->userFilter !== auth()->id() && $this->targetUser)
+                    {{ __('Compliance audit trail for :name (:email).', ['name' => $this->targetUser->name, 'email' => $this->targetUser->email]) }}
+                @elseif ($this->isAdmin && ! $this->userFilter)
+                    {{ __('Administrator audit trail across all system users and events.') }}
+                @else
+                    {{ __('Transparent compliance record of all your actions, session authentication events, and profile updates.') }}
+                @endif
             </p>
         </div>
 
@@ -143,17 +237,34 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
     {{-- Filter Bar --}}
     <div class="rounded-xl border border-border bg-card p-4 space-y-3 shadow-xs">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            <div class="relative md:col-span-5 min-w-0">
+            <div class="relative {{ $this->isAdmin ? 'md:col-span-4' : 'md:col-span-5' }} min-w-0">
                 <x-icon name="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none"/>
                 <input
                     type="text"
                     wire:model.live.debounce.300ms="search"
-                    placeholder="{{ __('Search your activity description, IP…') }}"
+                    placeholder="{{ __('Search activity description, IP…') }}"
                     class="h-9 w-full rounded-md border border-input bg-transparent pl-8 pr-3 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 />
             </div>
 
-            <div class="md:col-span-3 min-w-0">
+            @if ($this->isAdmin)
+                <div class="md:col-span-3 min-w-0">
+                    <select
+                        wire:model.live="userFilter"
+                        class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 truncate"
+                    >
+                        <option value="">{{ __('All Users (Admin View)') }}</option>
+                        <option value="{{ auth()->id() }}">{{ __('My Own Activity (Admin)') }}</option>
+                        @foreach ($this->availableUsers as $userOpt)
+                            @if ($userOpt->id !== auth()->id())
+                                <option value="{{ $userOpt->id }}">{{ $userOpt->name }} ({{ $userOpt->email }})</option>
+                            @endif
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+
+            <div class="{{ $this->isAdmin ? 'md:col-span-2' : 'md:col-span-3' }} min-w-0">
                 <select
                     wire:model.live="eventFilter"
                     class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-xs shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 truncate"
@@ -168,14 +279,14 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
                 </select>
             </div>
 
-            <div class="md:col-span-4 flex items-center gap-1.5 min-w-0">
+            <div class="{{ $this->isAdmin ? 'md:col-span-3' : 'md:col-span-4' }} flex items-center gap-1.5 min-w-0">
                 <input type="date" wire:model.live="dateFrom" class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring" title="{{ __('From date') }}"/>
                 <span class="text-xs text-muted-foreground shrink-0">-</span>
                 <input type="date" wire:model.live="dateTo" class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring" title="{{ __('To date') }}"/>
             </div>
         </div>
 
-        @if ($search || $eventFilter || $dateFrom || $dateTo)
+        @if ($search || $eventFilter || ($this->isAdmin && $userFilter) || $dateFrom || $dateTo)
             <div class="flex items-center justify-between pt-2 border-t border-border">
                 <span class="text-xs text-muted-foreground">{{ __('Active filter applied') }}</span>
                 <button type="button" wire:click="resetFilters" class="text-xs text-primary hover:underline font-medium cursor-pointer">
@@ -198,6 +309,12 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
                         <div class="flex flex-wrap items-center justify-between gap-1">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-semibold text-foreground capitalize">{{ str_replace('_', ' ', $activity->event) }}</span>
+                                @if ($this->isAdmin && (! $this->userFilter || $this->userFilter !== $activity->user_id) && $activity->user)
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20" title="{{ $activity->user->email }}">
+                                        <x-icon name="user" class="h-2.5 w-2.5"/>
+                                        {{ $activity->user->name }}
+                                    </span>
+                                @endif
                                 <span class="text-[10px] font-mono text-muted-foreground px-1.5 py-0.2 rounded bg-secondary">
                                     {{ $activity->ip_address ?: '127.0.0.1' }}
                                 </span>
@@ -241,6 +358,9 @@ new #[Layout('layouts.app')] #[Title('My Activity Log & Security Trail')] class 
         @if ($selectedLog)
             <div class="space-y-4 text-xs">
                 <div class="p-3 rounded-lg border border-border bg-secondary/20 space-y-1 font-mono text-[11px]">
+                    @if ($this->isAdmin && $selectedLog->user)
+                        <div><strong>{{ __('User:') }}</strong> {{ $selectedLog->user->name }} ({{ $selectedLog->user->email }})</div>
+                    @endif
                     <div><strong>{{ __('Event:') }}</strong> {{ $selectedLog->event }}</div>
                     <div><strong>{{ __('Timestamp:') }}</strong> {{ $selectedLog->created_at->format('d M Y, H:i:s') }}</div>
                     <div><strong>{{ __('IP Address:') }}</strong> {{ $selectedLog->ip_address }}</div>

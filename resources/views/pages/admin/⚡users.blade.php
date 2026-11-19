@@ -1,11 +1,15 @@
 <?php
 
+use App\Concerns\RenamesUploads;
+use App\Enums\TeamRole;
 use App\Models\AuditLog;
 use App\Models\Role;
+use App\Models\Team;
 use App\Models\User;
 use App\Services\AuditLogService;
 use App\Services\RbacService;
 use App\Services\UserExportImportService;
+use App\Services\UserStudentSyncService;
 use App\Support\Toast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -25,6 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 new #[Layout('layouts.app')] #[Title('Users Management')] class extends Component {
+    use RenamesUploads;
     use WithFileUploads;
     use WithPagination;
 
@@ -56,6 +61,7 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
 
     // Form Modal state
     public ?int $editingUserId = null;
+    public $avatarFile = null;
     public string $activeFormTab = 'basic'; // basic, identity, security
 
     public array $form = [
@@ -70,7 +76,7 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
         'id_type' => 'aadhaar',
         'id_number' => '',
         'designation' => '',
-        'role' => 'Staff',
+        'role' => '',
         'status' => 'active',
         'password' => '',
         'password_confirmation' => '',
@@ -230,6 +236,7 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
     {
         $this->resetValidation();
         $this->editingUserId = null;
+        $this->avatarFile = null;
         $this->activeFormTab = 'basic';
         $this->form = [
             'first_name' => '',
@@ -243,7 +250,7 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
             'id_type' => 'aadhaar',
             'id_number' => '',
             'designation' => '',
-            'role' => 'Staff',
+            'role' => '',
             'status' => 'active',
             'password' => '',
             'password_confirmation' => '',
@@ -256,11 +263,12 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
         $this->resetValidation();
         $user = User::with('roles')->findOrFail($id);
         $this->editingUserId = $id;
+        $this->avatarFile = null;
         $this->activeFormTab = 'basic';
 
         $this->form = [
             'first_name' => $user->first_name ?? '',
-            'last_name' => $user->last_last ?? ($user->last_name ?? ''),
+            'last_name' => $user->last_name ?? '',
             'email' => $user->email,
             'phone' => $user->phone ?? '',
             'whatsapp_no' => $user->whatsapp_no ?? '',
@@ -270,13 +278,30 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
             'id_type' => $user->id_type ?? 'aadhaar',
             'id_number' => $user->id_number ?? '',
             'designation' => $user->designation ?? '',
-            'role' => $user->roles->pluck('name')->first() ?? 'Staff',
+            'role' => $user->roles->pluck('name')->first() ?? '',
             'status' => $user->status ?? 'active',
             'password' => '',
             'password_confirmation' => '',
         ];
 
         $this->dispatch('modal-open', name: 'user-form-modal');
+    }
+
+    public function removeAvatar(): void
+    {
+        if ($this->editingUserId) {
+            $user = User::findOrFail($this->editingUserId);
+            if ($user->avatar && \Illuminate\Support\Facades\Storage::disk('public')->exists($user->avatar)) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($user->avatar);
+            }
+            $user->avatar = null;
+            $user->save();
+            $this->avatarFile = null;
+            Toast::dispatch($this, 'info', __('User profile photo removed.'));
+            $this->dispatch('modal-close', name: 'user-avatar-remove-modal');
+        } else {
+            $this->avatarFile = null;
+        }
     }
 
     public function save(): void
@@ -310,13 +335,17 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
             $rules['form.password'] = [$isEdit ? 'nullable' : 'required', 'string', 'min:8', 'same:form.password_confirmation'];
         }
 
+        if ($this->avatarFile) {
+            $rules['avatarFile'] = ['image', 'mimes:png,jpg,jpeg,webp', 'max:5120'];
+        }
+
         try {
             $this->validate($rules, [
                 'form.first_name.required' => __('First name is required.'),
                 'form.email.required' => __('Email address is required.'),
                 'form.email.email' => __('Please enter a valid email address.'),
                 'form.email.unique' => __('This email address is already registered.'),
-                'form.role.required' => __('Please select an assigned role.'),
+                'form.role.required' => __('Please select an assigned role from the available options.'),
                 'form.status.required' => __('Please select an account status.'),
                 'form.password.required' => __('Password is required.'),
                 'form.password.min' => __('Password must be at least 8 characters.'),
@@ -324,11 +353,11 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             $errorBag = $e->validator->errors();
-            if ($errorBag->has('form.first_name') || $errorBag->has('form.last_name') || $errorBag->has('form.email') || $errorBag->has('form.phone') || $errorBag->has('form.whatsapp_no') || $errorBag->has('form.dob') || $errorBag->has('form.gender')) {
+            if ($errorBag->has('form.first_name') || $errorBag->has('form.last_name') || $errorBag->has('form.email') || $errorBag->has('form.phone') || $errorBag->has('form.whatsapp_no') || $errorBag->has('form.dob') || $errorBag->has('form.gender') || $errorBag->has('form.role') || $errorBag->has('form.status')) {
                 $this->activeFormTab = 'basic';
             } elseif ($errorBag->has('form.tenth_roll') || $errorBag->has('form.id_type') || $errorBag->has('form.id_number') || $errorBag->has('form.designation')) {
                 $this->activeFormTab = 'identity';
-            } elseif ($errorBag->has('form.role') || $errorBag->has('form.status') || $errorBag->has('form.password') || $errorBag->has('form.password_confirmation')) {
+            } elseif ($errorBag->has('form.password') || $errorBag->has('form.password_confirmation')) {
                 $this->activeFormTab = 'security';
             }
 
@@ -362,15 +391,45 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
 
             if ($isEdit) {
                 $user = User::findOrFail($this->editingUserId);
+                if ($this->avatarFile) {
+                    if ($user->avatar && \Illuminate\Support\Facades\Storage::disk('public')->exists($user->avatar)) {
+                        \Illuminate\Support\Facades\Storage::disk('public')->delete($user->avatar);
+                    }
+                    $avatarName = $this->generateFileName('avatar', $this->avatarFile, $user->id);
+                    $userData['avatar'] = $this->avatarFile->storeAs('avatars', $avatarName, 'public');
+                }
                 $user->update($userData);
                 RbacService::syncUserRoles($user, $this->form['role']);
+                UserStudentSyncService::syncFromUser($user);
                 Toast::dispatch($this, 'success', __("User ':name' updated successfully.", ['name' => $user->name]));
             } else {
                 $userData['password'] = Hash::make($this->form['password'] ?: 'Password@123');
                 $user = User::create($userData);
+
+                if ($this->avatarFile) {
+                    $avatarName = $this->generateFileName('avatar', $this->avatarFile, $user->id);
+                    $avatarPath = $this->avatarFile->storeAs('avatars', $avatarName, 'public');
+                    $user->avatar = $avatarPath;
+                    $user->save();
+                }
+
+                $targetTeam = auth()->user()?->currentTeam
+                    ?? auth()->user()?->personalTeam()
+                    ?? Team::where('slug', 'sntcssc')->first()
+                    ?? Team::where('slug', 'super-admins-team')->first()
+                    ?? Team::first();
+
+                if ($targetTeam) {
+                    $user->assignToTeam($targetTeam, TeamRole::Member);
+                } else {
+                    $user->ensureCurrentTeam();
+                }
+
                 RbacService::syncUserRoles($user, $this->form['role']);
+                UserStudentSyncService::syncFromUser($user);
                 Toast::dispatch($this, 'success', __("User ':name' created successfully (URN: :urn).", ['name' => $user->name, 'urn' => $user->urn]));
             }
+            $this->avatarFile = null;
         });
 
         $this->dispatch('modal-close', name: 'user-form-modal');
@@ -438,6 +497,13 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
     {
         if ($this->deleteTargetId) {
             $user = User::findOrFail($this->deleteTargetId);
+            if ($user->id === auth()->id()) {
+                Toast::dispatch($this, 'error', __('You cannot delete your own account.'));
+                $this->deleteTargetId = null;
+                $this->dispatch('modal-close', name: 'user-delete-modal');
+
+                return;
+            }
             RbacService::softDeleteUser($user);
             $this->deleteTargetId = null;
             $this->dispatch('modal-close', name: 'user-delete-modal');
@@ -462,6 +528,13 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
     {
         if ($this->forceDeleteTargetId) {
             $user = User::withTrashed()->findOrFail($this->forceDeleteTargetId);
+            if ($user->id === auth()->id()) {
+                Toast::dispatch($this, 'error', __('You cannot permanently purge your own account.'));
+                $this->forceDeleteTargetId = null;
+                $this->dispatch('modal-close', name: 'user-force-delete-modal');
+
+                return;
+            }
             RbacService::forceDeleteUser($user);
             $this->forceDeleteTargetId = null;
             $this->dispatch('modal-close', name: 'user-force-delete-modal');
@@ -502,7 +575,9 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
             return;
         }
 
-        $users = User::whereIn('id', $this->selectedUserIds)->get();
+        $users = User::whereIn('id', $this->selectedUserIds)
+            ->where('id', '!=', auth()->id())
+            ->get();
         foreach ($users as $u) {
             RbacService::softDeleteUser($u);
         }
@@ -528,7 +603,7 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
         return UserExportImportService::exportExcel($this->usersQuery(), 'users-directory');
     }
 
-    public function exportPdf(): Response
+    public function exportPdf(): StreamedResponse
     {
         AuditLogService::log('users_exported_pdf', 'Exported users table to PDF report.');
 
@@ -848,7 +923,9 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
                             </td>
 
                             <td class="px-4 py-3.5 text-xs">
-                                @php($roleObj = $u->roles->first())
+                                @php
+                                    $roleObj = $u->roles->first();
+                                @endphp
                                 <x-ui.badge :color="$roleObj?->color ?? 'secondary'" class="gap-1">
                                     <x-icon name="shield" class="h-2.5 w-2.5"/>
                                     {{ $roleObj?->name ?? 'Staff' }}
@@ -1029,8 +1106,8 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
                     wire:click="$set('activeFormTab', 'basic')"
                     class="relative px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer {{ $activeFormTab === 'basic' ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-secondary' }}"
                 >
-                    <span>{{ __('1. Personal & Contact') }}</span>
-                    @if ($errors->has('form.first_name') || $errors->has('form.last_name') || $errors->has('form.email') || $errors->has('form.phone') || $errors->has('form.whatsapp_no') || $errors->has('form.dob') || $errors->has('form.gender'))
+                    <span>{{ __('1. Personal & Role') }}</span>
+                    @if ($errors->has('form.first_name') || $errors->has('form.last_name') || $errors->has('form.email') || $errors->has('form.phone') || $errors->has('form.whatsapp_no') || $errors->has('form.dob') || $errors->has('form.gender') || $errors->has('form.role') || $errors->has('form.status'))
                         <span class="inline-block size-1.5 rounded-full bg-destructive ml-1"></span>
                     @endif
                 </button>
@@ -1050,28 +1127,127 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
                     class="relative px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer {{ $activeFormTab === 'security' ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-secondary' }}"
                 >
                     <span>{{ __('3. Access & Password') }}</span>
-                    @if ($errors->has('form.role') || $errors->has('form.status') || $errors->has('form.password') || $errors->has('form.password_confirmation'))
+                    @if ($errors->has('form.password') || $errors->has('form.password_confirmation'))
                         <span class="inline-block size-1.5 rounded-full bg-destructive ml-1"></span>
                     @endif
                 </button>
             </div>
 
             <form wire:submit="save" class="space-y-4 pt-1">
-                {{-- TAB 1: Personal & Contact --}}
+                {{-- TAB 1: Personal, Contact & Assigned Role --}}
                 <div class="{{ $activeFormTab === 'basic' ? 'space-y-4' : 'hidden' }}">
+                    @php
+                        $editingUser = $editingUserId ? \App\Models\User::find($editingUserId) : null;
+                    @endphp
+
+                    <!-- User Photo / Avatar Management -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-muted/30 border border-border rounded-xl">
+                        <div class="flex items-center gap-3.5">
+                            <div class="relative">
+                                @if ($avatarFile)
+                                    <img src="{{ $avatarFile->temporaryUrl() }}" alt="Preview" class="size-16 rounded-full object-cover border-2 border-primary shadow-xs" />
+                                @elseif ($editingUser?->avatarUrl())
+                                    <img src="{{ $editingUser->avatarUrl() }}" alt="{{ $editingUser->name }}" class="size-16 rounded-full object-cover border-2 border-border shadow-xs" />
+                                @else
+                                    <div class="size-16 rounded-full bg-primary/10 text-primary font-bold text-lg flex items-center justify-center border-2 border-border">
+                                        {{ $editingUser?->initials() ?? 'US' }}
+                                    </div>
+                                @endif
+                                <div wire:loading wire:target="avatarFile" class="absolute inset-0 bg-background/80 rounded-full flex items-center justify-center">
+                                    <x-icon name="loader-2" class="w-5 h-5 animate-spin text-primary" />
+                                </div>
+                            </div>
+                            <div class="space-y-1">
+                                <h4 class="text-xs font-semibold text-foreground">{{ __('Profile Photo / Avatar') }}</h4>
+                                <p class="text-[11px] text-muted-foreground">{{ __('JPG, PNG or WEBP (Max 5MB). Renamed using RenamesUploads convention.') }}</p>
+                                @error('avatarFile') <span class="text-xs text-destructive block">{{ $message }}</span> @enderror
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label class="cursor-pointer">
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-input bg-card hover:bg-muted text-foreground transition-colors shadow-xs">
+                                    <x-icon name="upload" class="w-3.5 h-3.5" />
+                                    {{ ($avatarFile || $editingUser?->avatar) ? __('Replace Photo') : __('Upload Photo') }}
+                                </span>
+                                <input type="file" wire:model="avatarFile" accept="image/png,image/jpeg,image/jpg,image/webp" class="sr-only" />
+                            </label>
+
+                            @if ($avatarFile)
+                                @if ($editingUserId)
+                                    <button type="button" wire:click="save" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs cursor-pointer">
+                                        <x-icon name="check" class="w-3.5 h-3.5" />
+                                        {{ __('Save Photo') }}
+                                    </button>
+                                @endif
+                                <button type="button" wire:click="$set('avatarFile', null)" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer">
+                                    {{ __('Cancel') }}
+                                </button>
+                            @elseif ($editingUser?->avatar)
+                                <button type="button" x-data x-on:click="$store.modals.open('user-avatar-remove-modal')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg text-destructive hover:bg-destructive/10 transition-colors cursor-pointer">
+                                    <x-icon name="trash-2" class="w-3.5 h-3.5" />
+                                    {{ __('Remove Photo') }}
+                                </button>
+                            @endif
+                        </div>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <x-ui.input wire:model="form.first_name" :label="__('First Name') .' *'" required :error="$errors->first('form.first_name')"/>
                         <x-ui.input wire:model="form.last_name" :label="__('Last Name')" :error="$errors->first('form.last_name')"/>
                     </div>
 
-                    <x-ui.input wire:model="form.email" :label="__('Email Address') .' *'" type="email" required :error="$errors->first('form.email')"/>
-
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <x-ui.input wire:model="form.phone" :label="__('Phone Number')" type="tel" placeholder="+91 98765 43210" :error="$errors->first('form.phone')"/>
-                        <x-ui.input wire:model="form.whatsapp_no" :label="__('WhatsApp Number')" type="tel" placeholder="+91 98765 43210" :error="$errors->first('form.whatsapp_no')"/>
+                        <x-ui.input wire:model="form.email" :label="__('Email Address') .' *'" type="email" required :error="$errors->first('form.email')"/>
+
+                        <div>
+                            <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Assigned Role') }} *</label>
+                            <select
+                                wire:model="form.role"
+                                class="mt-1 h-9 w-full rounded-md border {{ $errors->has('form.role') ? 'border-destructive' : 'border-input' }} bg-transparent px-3 text-xs shadow-xs outline-none focus-visible:border-ring"
+                            >
+                                <option value="">{{ __('-- Select an Assigned Role --') }}</option>
+                                @foreach ($this->availableRoles as $role)
+                                    <option value="{{ $role->name }}">{{ $role->name }} ({{ $role->description ? \Illuminate\Support\Str::limit($role->description, 35) : 'General access' }})</option>
+                                @endforeach
+                            </select>
+                            @if ($errors->has('form.role'))
+                                <p class="mt-1.5 text-xs text-destructive flex items-center gap-1 font-medium">
+                                    <x-icon name="alert-circle" class="h-3.5 w-3.5 shrink-0"/>
+                                    <span>{{ $errors->first('form.role') }}</span>
+                                </p>
+                            @endif
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Account Status') }} *</label>
+                            <select
+                                wire:model="form.status"
+                                class="mt-1 h-9 w-full rounded-md border {{ $errors->has('form.status') ? 'border-destructive' : 'border-input' }} bg-transparent px-3 text-xs shadow-xs outline-none focus-visible:border-ring"
+                            >
+                                <option value="active">{{ __('Active (Normal Access)') }}</option>
+                                <option value="inactive">{{ __('Inactive (Suspended)') }}</option>
+                                <option value="invited">{{ __('Invited (Pending Confirmation)') }}</option>
+                                <option value="pending">{{ __('Pending Verification') }}</option>
+                            </select>
+                            @if ($errors->has('form.status'))
+                                <p class="mt-1.5 text-xs text-destructive flex items-center gap-1 font-medium">
+                                    <x-icon name="alert-circle" class="h-3.5 w-3.5 shrink-0"/>
+                                    <span>{{ $errors->first('form.status') }}</span>
+                                </p>
+                            @endif
+                        </div>
+
+                        <x-ui.input wire:model="form.phone" :label="__('Phone Number')" type="tel" placeholder="+91 98765 43210" :error="$errors->first('form.phone')"/>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <x-ui.input wire:model="form.whatsapp_no" :label="__('WhatsApp Number')" type="tel" placeholder="+91 98765 43210" :error="$errors->first('form.whatsapp_no')"/>
+                        <x-ui.input wire:model="form.dob" :label="__('Date of Birth')" type="date" :error="$errors->first('form.dob')"/>
+                    </div>
+
+                    <div>
                         <x-ui.select
                             wire:model="form.gender"
                             :label="__('Gender')"
@@ -1082,7 +1258,6 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
                             ]"
                             :error="$errors->first('form.gender')"
                         />
-                        <x-ui.input wire:model="form.dob" :label="__('Date of Birth')" type="date" :error="$errors->first('form.dob')"/>
                     </div>
                 </div>
 
@@ -1112,42 +1287,14 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
 
                 {{-- TAB 3: Access & Security --}}
                 <div class="{{ $activeFormTab === 'security' ? 'space-y-4' : 'hidden' }}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="rounded-lg border border-border bg-muted/40 p-3 text-xs flex items-center justify-between">
                         <div>
-                            <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Assigned Role') }} *</label>
-                            <select
-                                wire:model="form.role"
-                                class="mt-1 h-9 w-full rounded-md border {{ $errors->has('form.role') ? 'border-destructive' : 'border-input' }} bg-transparent px-3 text-xs shadow-xs outline-none focus-visible:border-ring"
-                            >
-                                @foreach ($this->availableRoles as $role)
-                                    <option value="{{ $role->name }}">{{ $role->name }} ({{ $role->description ? \Illuminate\Support\Str::limit($role->description, 35) : 'General access' }})</option>
-                                @endforeach
-                            </select>
-                            @if ($errors->has('form.role'))
-                                <p class="mt-1.5 text-xs text-destructive flex items-center gap-1 font-medium">
-                                    <x-icon name="alert-circle" class="h-3.5 w-3.5 shrink-0"/>
-                                    <span>{{ $errors->first('form.role') }}</span>
-                                </p>
-                            @endif
+                            <span class="text-muted-foreground">{{ __('Selected Role') }}:</span>
+                            <span class="font-semibold text-foreground ml-1">{{ $form['role'] ?: __('None (Select on Tab 1)') }}</span>
                         </div>
-
                         <div>
-                            <label class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ __('Account Status') }} *</label>
-                            <select
-                                wire:model="form.status"
-                                class="mt-1 h-9 w-full rounded-md border {{ $errors->has('form.status') ? 'border-destructive' : 'border-input' }} bg-transparent px-3 text-xs shadow-xs outline-none focus-visible:border-ring"
-                            >
-                                <option value="active">{{ __('Active (Normal Access)') }}</option>
-                                <option value="inactive">{{ __('Inactive (Suspended)') }}</option>
-                                <option value="invited">{{ __('Invited (Pending Confirmation)') }}</option>
-                                <option value="pending">{{ __('Pending Verification') }}</option>
-                            </select>
-                            @if ($errors->has('form.status'))
-                                <p class="mt-1.5 text-xs text-destructive flex items-center gap-1 font-medium">
-                                    <x-icon name="alert-circle" class="h-3.5 w-3.5 shrink-0"/>
-                                    <span>{{ $errors->first('form.status') }}</span>
-                                </p>
-                            @endif
+                            <span class="text-muted-foreground">{{ __('Status') }}:</span>
+                            <span class="font-semibold text-foreground ml-1 uppercase">{{ $form['status'] }}</span>
                         </div>
                     </div>
 
@@ -1321,6 +1468,34 @@ new #[Layout('layouts.app')] #[Title('Users Management')] class extends Componen
                 <x-ui.button variant="destructive" wire:click="lockUser">
                     <x-icon name="lock" class="h-4 w-4 mr-1"/>
                     {{ __('Lock Account') }}
+                </x-ui.button>
+            </div>
+        </div>
+    </x-ui.modal>
+
+    {{-- User Remove Photo Confirmation Modal --}}
+    <x-ui.modal
+        name="user-avatar-remove-modal"
+        max-width="max-w-md"
+        :title="__('Remove Profile Photo')"
+        :description="__('Remove this user\'s profile photo and revert to standard initials.')"
+    >
+        <div class="space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 rounded-full bg-destructive/10 text-destructive shrink-0">
+                    <x-icon name="alert-triangle" class="w-6 h-6" />
+                </div>
+                <p class="text-sm text-muted-foreground">
+                    {{ __('Are you sure you want to remove this user\'s profile photo? The image file will be permanently deleted from server storage.') }}
+                </p>
+            </div>
+            <div class="flex justify-end gap-2 pt-2 border-t border-border">
+                <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('user-avatar-remove-modal')">
+                    {{ __('Cancel') }}
+                </x-ui.button>
+                <x-ui.button variant="destructive" type="button" wire:click="removeAvatar">
+                    <x-icon name="trash-2" class="w-4 h-4 mr-1" />
+                    {{ __('Remove Photo') }}
                 </x-ui.button>
             </div>
         </div>

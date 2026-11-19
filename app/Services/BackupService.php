@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 use ZipArchive;
 
 class BackupService
@@ -36,7 +36,14 @@ class BackupService
      */
     public static function defaultDisk(): string
     {
-        return (string) Setting::get('backup.storage_disk', 'local');
+        $backupDisk = (string) Setting::get('backup.storage_disk', 'local');
+        $autoBackupS3 = (bool) Setting::get('storage.auto_backup_to_s3', false);
+
+        if ($autoBackupS3 && (Setting::get('storage.s3_bucket') || config('filesystems.disks.s3.bucket'))) {
+            return 's3';
+        }
+
+        return $backupDisk;
     }
 
     /**
@@ -132,25 +139,40 @@ class BackupService
             File::put($tempDir.'/meta.json', json_encode($meta, JSON_PRETTY_PRINT));
 
             // 5. Package into ZIP archive
-            $finalZipPath = Storage::disk($diskName)->path($relativeStoragePath);
-            File::ensureDirectoryExists(dirname($finalZipPath));
+            $localZipPath = $tempDir.'/package.zip';
 
             $zip = new ZipArchive;
-            if ($zip->open($finalZipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                throw new \RuntimeException("Could not create ZIP archive at {$finalZipPath}");
+            if ($zip->open($localZipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new \RuntimeException("Could not create ZIP archive at {$localZipPath}");
             }
 
             $allFiles = File::allFiles($tempDir);
             foreach ($allFiles as $file) {
+                if ($file->getPathname() === $localZipPath) {
+                    continue;
+                }
                 $relativePath = substr($file->getPathname(), strlen($tempDir) + 1);
                 $zip->addFile($file->getPathname(), str_replace('\\', '/', $relativePath));
             }
             $zip->close();
 
             // 6. Calculate checksum & size
-            $sizeBytes = File::size($finalZipPath);
-            $checksum = hash_file('sha256', $finalZipPath);
+            $sizeBytes = File::size($localZipPath);
+            $checksum = hash_file('sha256', $localZipPath);
             $durationSeconds = round(microtime(true) - $startTime, 2);
+
+            // 7. Transfer to final destination disk (S3 or local/public)
+            if ($diskName === 's3') {
+                $stream = fopen($localZipPath, 'r');
+                Storage::disk('s3')->put($relativeStoragePath, $stream);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            } else {
+                $finalZipPath = Storage::disk($diskName)->path($relativeStoragePath);
+                File::ensureDirectoryExists(dirname($finalZipPath));
+                File::copy($localZipPath, $finalZipPath);
+            }
 
             // 7. Save Backup record
             $backup = Backup::create([
@@ -441,19 +463,42 @@ class BackupService
     {
         $backupModel = null;
         $filePath = null;
+        $tempS3DownloadPath = null;
 
         if ($backupOrPath instanceof Backup) {
             $backupModel = $backupOrPath;
-            $filePath = $backupModel->absolutePath();
+            if ($backupModel->disk === 's3') {
+                $tempS3DownloadPath = storage_path('app/temp/restore_s3_'.Str::random(12).'.zip');
+                File::ensureDirectoryExists(dirname($tempS3DownloadPath));
+                $stream = Storage::disk('s3')->readStream($backupModel->path);
+                if ($stream) {
+                    file_put_contents($tempS3DownloadPath, stream_get_contents($stream));
+                    fclose($stream);
+                }
+                $filePath = $tempS3DownloadPath;
+            } else {
+                $filePath = $backupModel->absolutePath();
+            }
         } else {
             $backupModel = Backup::firstWhere('filename', $backupOrPath)
                 ?? Backup::firstWhere('path', $backupOrPath)
                 ?? Backup::firstWhere('uuid', $backupOrPath);
 
-            $filePath = $backupModel ? $backupModel->absolutePath() : (file_exists($backupOrPath) ? $backupOrPath : storage_path("app/{$backupOrPath}"));
+            if ($backupModel && $backupModel->disk === 's3') {
+                $tempS3DownloadPath = storage_path('app/temp/restore_s3_'.Str::random(12).'.zip');
+                File::ensureDirectoryExists(dirname($tempS3DownloadPath));
+                $stream = Storage::disk('s3')->readStream($backupModel->path);
+                if ($stream) {
+                    file_put_contents($tempS3DownloadPath, stream_get_contents($stream));
+                    fclose($stream);
+                }
+                $filePath = $tempS3DownloadPath;
+            } else {
+                $filePath = $backupModel ? $backupModel->absolutePath() : (file_exists($backupOrPath) ? $backupOrPath : storage_path("app/{$backupOrPath}"));
+            }
         }
 
-        if (! file_exists($filePath) || ! is_readable($filePath)) {
+        if (! $filePath || ! file_exists($filePath) || ! is_readable($filePath)) {
             return [
                 'success' => false,
                 'message' => __('Backup file not found or is unreadable on disk.'),
@@ -711,10 +756,21 @@ class BackupService
                     ->from($fromAddress, $fromName);
 
                 if ($attachZip && $backup->existsOnDisk()) {
-                    $message->attach($backup->absolutePath(), [
-                        'as' => $backup->filename,
-                        'mime' => 'application/zip',
-                    ]);
+                    if ($backup->disk === 's3') {
+                        $stream = Storage::disk('s3')->readStream($backup->path);
+                        if ($stream) {
+                            $data = stream_get_contents($stream);
+                            fclose($stream);
+                            $message->attachData($data, $backup->filename, [
+                                'mime' => 'application/zip',
+                            ]);
+                        }
+                    } elseif ($backup->absolutePath()) {
+                        $message->attach($backup->absolutePath(), [
+                            'as' => $backup->filename,
+                            'mime' => 'application/zip',
+                        ]);
+                    }
                 }
             });
 
@@ -820,7 +876,7 @@ class BackupService
     /**
      * Safely download a backup file with path validation.
      */
-    public function downloadBackup(Backup $backup, ?User $actor = null): BinaryFileResponse
+    public function downloadBackup(Backup $backup, ?User $actor = null): Response
     {
         if (! $backup->existsOnDisk()) {
             abort(404, __('The requested backup file does not exist on disk.'));
@@ -832,6 +888,12 @@ class BackupService
             newValues: ['filename' => $backup->filename, 'size_bytes' => $backup->size_bytes],
             userId: $actor?->id ?? auth()->id()
         );
+
+        if ($backup->disk === 's3') {
+            return Storage::disk('s3')->download($backup->path, $backup->filename, [
+                'Content-Type' => 'application/zip',
+            ]);
+        }
 
         return response()->download($backup->absolutePath(), $backup->filename, [
             'Content-Type' => 'application/zip',

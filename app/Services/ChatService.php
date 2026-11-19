@@ -18,6 +18,7 @@ use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -265,7 +266,9 @@ class ChatService
             ]);
         }
 
-        return DB::transaction(function () use ($conversation, $sender, $body, $replyToId, $attachments, $type) {
+        $recipientIds = [];
+
+        $message = DB::transaction(function () use ($conversation, $sender, $body, $replyToId, $attachments, $type, &$recipientIds) {
             $messageType = ! empty($attachments) ? (count($attachments) === 1 ? $this->resolveTypeFromAttachment($attachments[0]) : ChatMessage::TYPE_FILE) : $type;
 
             $message = ChatMessage::create([
@@ -322,14 +325,16 @@ class ChatService
                     'last_read_message_id' => $message->id,
                 ]);
 
-            // Trigger Realtime Broadcast Event
-            $this->broadcastSentMessage($message, $recipientIds);
-
-            // Dispatch Multi-Channel Notifications
-            $this->dispatchChatNotifications($conversation, $message, $sender, $recipientIds);
-
             return $message;
         });
+
+        // Trigger Realtime Broadcast Event outside database transaction
+        $this->broadcastSentMessage($message, $recipientIds);
+
+        // Dispatch Multi-Channel Notifications outside database transaction
+        $this->dispatchChatNotifications($conversation, $message, $sender, $recipientIds);
+
+        return $message;
     }
 
     /**
@@ -817,6 +822,7 @@ class ChatService
 
         if (in_array($realtimeDriver, ['broadcasting', 'hybrid'], true)) {
             try {
+                $message->loadMissing(['user', 'replyTo.user', 'attachments']);
                 event(new ChatMessageSentEvent($message, $recipientIds));
             } catch (Throwable $e) {
                 Log::debug('Realtime ChatMessageSentEvent graceful fallback: '.$e->getMessage());
@@ -844,33 +850,44 @@ class ChatService
         // Bulk fetch recipients in one single query
         $recipients = User::whereIn('id', $recipientIds)->get();
 
+        $now = now();
+        $notificationRows = [];
         foreach ($recipients as $recipient) {
+            $title = $conversation->isDirect()
+                ? __('New message from :name', ['name' => $sender->name])
+                : __(':name in :group', ['name' => $sender->name, 'group' => $conversation->displayNameFor($recipient)]);
+
+            $notificationRows[] = [
+                'uuid' => (string) Str::uuid(),
+                'user_id' => $recipient->id,
+                'type' => 'chat_message',
+                'category' => AppNotification::CATEGORY_CHAT,
+                'title' => $title,
+                'message' => $previewText,
+                'data' => json_encode([
+                    'action_url' => $chatUrl,
+                    'action_label' => __('Open Live Chat'),
+                    'icon' => 'message-square',
+                    'color' => 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+                    'created_by' => $sender->id,
+                    'metadata' => [
+                        'conversation_id' => $conversation->id,
+                        'message_id' => $message->id,
+                        'sender_id' => $sender->id,
+                    ],
+                ]),
+                'channel' => AppNotification::CHANNEL_DATABASE,
+                'created_by' => $sender->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (! empty($notificationRows)) {
             try {
-                // In-App Database notification only
-                $this->notificationService->send(
-                    user: $recipient,
-                    title: $conversation->isDirect()
-                        ? __('New message from :name', ['name' => $sender->name])
-                        : __(':name in :group', ['name' => $sender->name, 'group' => $conversation->displayNameFor($recipient)]),
-                    message: $previewText,
-                    category: AppNotification::CATEGORY_CHAT,
-                    options: [
-                        'type' => 'chat_message',
-                        'action_url' => $chatUrl,
-                        'action_label' => __('Open Live Chat'),
-                        'icon' => 'message-square',
-                        'color' => 'text-blue-500 bg-blue-500/10 border-blue-500/20',
-                        'created_by' => $sender->id,
-                        'channels' => [AppNotification::CHANNEL_DATABASE],
-                        'metadata' => [
-                            'conversation_id' => $conversation->id,
-                            'message_id' => $message->id,
-                            'sender_id' => $sender->id,
-                        ],
-                    ]
-                );
+                AppNotification::insert($notificationRows);
             } catch (Throwable $e) {
-                // Non-blocking
+                Log::debug('Chat notification batch insert notice: '.$e->getMessage());
             }
         }
     }

@@ -75,23 +75,29 @@ class SuperAdminSeeder extends Seeder
             $user->assignRole('Super Administrator');
         }
 
-        // 4. Ensure user has a personal team
-        if (! $user->current_team_id || ! $user->currentTeam) {
-            $team = $user->ownedTeams()->first();
+        // 4. Ensure primary organization team exists and is assigned
+        $team = Team::where('slug', 'sntcssc')
+            ->orWhere('slug', 'super-admins-team')
+            ->first();
 
-            if (! $team) {
-                $team = Team::create([
-                    'name' => "Super Admin's Team",
-                    'is_personal' => true,
-                    'slug' => 'super-admins-team',
-                ]);
-
-                $team->members()->syncWithoutDetaching([
-                    $user->id => ['role' => TeamRole::Owner->value],
-                ]);
-            }
-
-            $user->switchTeam($team);
+        if (! $team) {
+            $team = Team::create([
+                'name' => 'SNT CSSC',
+                'is_personal' => false,
+                'slug' => 'sntcssc',
+            ]);
+        } else {
+            $team->update([
+                'name' => 'SNT CSSC',
+                'slug' => 'sntcssc',
+                'is_personal' => false,
+            ]);
         }
+
+        $team->members()->syncWithoutDetaching([
+            $user->id => ['role' => TeamRole::Owner->value],
+        ]);
+
+        $user->switchTeam($team);
     }
 }

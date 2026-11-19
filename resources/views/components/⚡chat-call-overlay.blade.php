@@ -1191,7 +1191,7 @@ new class extends Component {
         </div>
     </div>
 
-    <!-- B. Floating Minimized Call Widget (For Multitasking in Live Chat / Portal) -->
+    {{-- B. Floating Minimized Call Widget (For Multitasking in Portal) --}}
     <div
         x-show="(callStatus === 'connected' || callStatus === 'outgoing') && isMinimized"
         x-transition:enter="transition ease-out duration-300"

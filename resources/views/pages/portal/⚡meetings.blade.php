@@ -70,9 +70,13 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
 
     public function mount(): void
     {
-        $enabled = (bool) Setting::get('chat.meetings_enabled', true);
+        $enabled = (bool) Setting::get('meeting.enabled', Setting::get('chat.meetings_enabled', true));
         if (! $enabled && ! auth()->user()?->hasRole('Super Administrator')) {
             abort(403, __('Online meetings are currently disabled by administrator.'));
+        }
+
+        if (! auth()->user()?->can('meetings.view') && ! auth()->user()?->hasRole('Super Administrator')) {
+            abort(403, __('You do not have permission to access online meetings.'));
         }
 
         $now = now()->addHour();
@@ -83,6 +87,8 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
 
     public function openInstantModal(): void
     {
+        abort_unless(auth()->user()?->can('meetings.create') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to create online meetings.'));
+
         $user = auth()->user();
         $this->instantTopic = __('Instant Meeting (:name)', ['name' => $user?->name ?? 'User']);
         $this->instantMode = 'video';
@@ -92,6 +98,8 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
 
     public function createInstantMeeting(): void
     {
+        abort_unless(auth()->user()?->can('meetings.create') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to create online meetings.'));
+
         $this->validate([
             'instantTopic' => ['required', 'string', 'min:2', 'max:150'],
             'instantMode' => ['required', 'in:video,audio'],
@@ -124,6 +132,8 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
 
     public function scheduleMeeting(): void
     {
+        abort_unless(auth()->user()?->can('meetings.create') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to create online meetings.'));
+
         if (empty($this->endsAt) || Carbon::parse($this->endsAt)->lte(Carbon::parse($this->scheduledAt))) {
             $this->endsAt = Carbon::parse($this->scheduledAt)->addMinutes($this->durationMinutes)->format('Y-m-d\TH:i');
         }
@@ -500,15 +510,17 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
         </div>
 
         <div class="flex items-center gap-2 flex-wrap">
-            <!-- Start Instant Video Meeting (Opens Modal with Topic & Access options) -->
-            <x-ui.button wire:click="openInstantModal" variant="default" icon="video" size="sm">
-                {{ __('Start Instant Meeting') }}
-            </x-ui.button>
+            @can('meetings.create')
+                <!-- Start Instant Video Meeting (Opens Modal with Topic & Access options) -->
+                <x-ui.button wire:click="openInstantModal" variant="default" icon="video" size="sm">
+                    {{ __('Start Instant Meeting') }}
+                </x-ui.button>
 
-            <!-- Schedule Meeting -->
-            <x-ui.button x-on:click="$store.modals.open('schedule-meeting-modal')" variant="outline" icon="calendar-plus" size="sm">
-                {{ __('Schedule Meeting') }}
-            </x-ui.button>
+                <!-- Schedule Meeting -->
+                <x-ui.button x-on:click="$store.modals.open('schedule-meeting-modal')" variant="outline" icon="calendar-plus" size="sm">
+                    {{ __('Schedule Meeting') }}
+                </x-ui.button>
+            @endcan
         </div>
     </div>
 
@@ -672,6 +684,7 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
         @endforelse
     </div>
 
+    @can('meetings.create')
     <!-- 1. Modal: Instant Meeting Setup (Topic & Access Type) -->
     <x-ui.modal name="instant-meeting-modal" max-width="max-w-md" title="{{ __('Start Instant Meeting') }}">
         <div class="space-y-4">
@@ -924,6 +937,7 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
             </div>
         </div>
     </x-ui.modal>
+    @endcan
 
     <!-- 3. Modal: Edit / Modify Scheduled Meeting -->
     <x-ui.modal name="edit-meeting-modal" max-width="max-w-xl" title="{{ __('Edit Scheduled Meeting') }}">
@@ -1226,8 +1240,16 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
         <x-ui.modal name="share-meeting-modal" max-width="max-w-md" title="{{ __('Meeting Invitation & QR Access') }}">
             <div
                 x-data="{
+                    joinUrl: {{ Js::from($joinUrl) }},
+                    shareText: {{ Js::from($shareText) }},
                     copiedInvite: false,
                     copiedLink: false,
+                    copyLink() {
+                        this.copyText(this.joinUrl, true);
+                    },
+                    copyInvite() {
+                        this.copyText(this.shareText, false);
+                    },
                     copyText(text, isLink = false) {
                         try {
                             if (navigator.clipboard && window.isSecureContext) {
@@ -1315,7 +1337,7 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
                         />
                         <x-ui.button
                             type="button"
-                            @click="copyText(@js($joinUrl), true)"
+                            @click="copyLink()"
                             variant="secondary"
                             size="sm"
                             icon="link"
@@ -1324,7 +1346,7 @@ new #[Layout('layouts.app')] #[Title('Online Meetings')] class extends Component
                         </x-ui.button>
                         <x-ui.button
                             type="button"
-                            @click="copyText(@js($shareText), false)"
+                            @click="copyInvite()"
                             variant="default"
                             size="sm"
                             icon="copy"

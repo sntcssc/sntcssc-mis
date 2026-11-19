@@ -54,9 +54,32 @@ class AuditLog extends Model
         return $this->morphTo();
     }
 
-    /* ----------------------------------------------------------------- *
-     *  Scopes
-     * ----------------------------------------------------------------- */
+    public static function record(
+        string $action,
+        ?array $details = null,
+        ?int $userId = null,
+        ?string $type = null,
+        ?string $status = null,
+        ?string $auditableType = null,
+        ?int $auditableId = null,
+        ?string $description = null
+    ): static {
+        $user = auth()->user();
+
+        return static::create([
+            'user_id' => $userId ?? $user?->id,
+            'team_id' => $user?->current_team_id,
+            'event' => $action,
+            'auditable_type' => $auditableType,
+            'auditable_id' => $auditableId,
+            'new_values' => $details,
+            'description' => $description ?? ($details ? json_encode($details, JSON_UNESCAPED_UNICODE) : null),
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'url' => request()->fullUrl(),
+            'method' => request()->method(),
+        ]);
+    }
 
     public function scopeForUser(Builder $query, int $userId): Builder
     {

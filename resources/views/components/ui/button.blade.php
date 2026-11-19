@@ -10,7 +10,10 @@
 
     $variants = [
         'default' => 'bg-primary text-primary-foreground shadow-xs hover:bg-primary/90',
+        'primary' => 'bg-primary text-primary-foreground shadow-xs hover:bg-primary/90',
         'destructive' => 'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/30',
+        'danger' => 'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/30',
+        'success' => 'bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 focus-visible:ring-emerald-500/30',
         'outline' => 'border border-border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
         'secondary' => 'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
         'ghost' => 'hover:bg-accent hover:text-accent-foreground',

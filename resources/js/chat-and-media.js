@@ -2869,7 +2869,7 @@ export function chatCallOverlayAlpine(config = {}) {
 
             try {
                 if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
-                    alert('Screen sharing is not supported by your browser.');
+                    window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'warning', message: 'Screen sharing is not supported by your browser.' } }));
                     return;
                 }
 
@@ -3316,36 +3316,34 @@ export function chatAlpine(config = {}) {
             const uname = this.currentUserName || (this.$wire && this.$wire.currentUserName) || 'Someone';
             const uavatar = this.currentUserAvatar || null;
 
-            // 1. Instant WebSocket Whisper (sub-5ms!)
+            // 1. Instant WebSocket Whisper (sub-5ms without any HTTP round-trip)
             if (this.activeConversationEcho && typeof this.activeConversationEcho.whisper === 'function') {
                 this.activeConversationEcho.whisper('typing', {
                     user_id: uid,
                     user_name: uname,
                     user_avatar: uavatar,
-                    is_typing: true
+                    is_typing: true,
                 });
-            }
-
-            // 2. Throttle HTTP server broadcast backup (every 2.0s)
-            if (!this.typingThrottleTimer) {
+            } else if (!this.typingThrottleTimer) {
+                // 2. Throttle HTTP server broadcast backup only when WebSockets not connected (every 4s)
                 if (this.$wire && typeof this.$wire.sendTypingIndicator === 'function') {
                     this.$wire.sendTypingIndicator(true);
                 }
                 this.typingThrottleTimer = setTimeout(() => {
                     this.typingThrottleTimer = null;
-                }, 2000);
+                }, 4000);
             }
 
-            // 3. Inactivity timer: 2.0s of no keystrokes resets typing
+            // 3. Inactivity timer: 2.5s of no keystrokes resets typing
             if (this.typingResetTimer) {
                 clearTimeout(this.typingResetTimer);
             }
             this.typingResetTimer = setTimeout(() => {
                 this.clearOwnTyping();
-            }, 2000);
+            }, 2500);
         },
 
-        clearOwnTyping() {
+        clearOwnTyping(skipHttp = false) {
             if (this.typingResetTimer) {
                 clearTimeout(this.typingResetTimer);
                 this.typingResetTimer = null;
@@ -3358,13 +3356,43 @@ export function chatAlpine(config = {}) {
             if (this.activeConversationEcho && typeof this.activeConversationEcho.whisper === 'function') {
                 this.activeConversationEcho.whisper('typing', {
                     user_id: uid,
-                    is_typing: false
+                    is_typing: false,
                 });
             }
 
-            // Fallback HTTP Clear
-            if (this.$wire && typeof this.$wire.sendTypingIndicator === 'function') {
+            // Fallback HTTP Clear (only if NOT sending a message and NOT using WebSockets)
+            if (!skipHttp && !this.activeConversationEcho && this.$wire && typeof this.$wire.sendTypingIndicator === 'function') {
                 this.$wire.sendTypingIndicator(false);
+            }
+        },
+
+        submitMessage() {
+            const input = this.$refs.composerInput;
+            const text = input ? input.value.trim() : '';
+            const hasAttachments = this.$wire && this.$wire.attachments && this.$wire.attachments.length > 0;
+
+            if (!text && !hasAttachments) {
+                return;
+            }
+
+            // 1. Immediately whisper typing=false on WebSocket without sending blocking HTTP request
+            this.clearOwnTyping(true);
+
+            // 2. Clear input immediately so user experiences zero latency
+            if (input) {
+                input.value = '';
+                input.style.height = 'auto';
+            }
+
+            // 3. Play sound chime instantly
+            this.playMessageSentChime();
+
+            // 4. Scroll to bottom
+            this.scrollToBottom();
+
+            // 5. Send message directly via Livewire
+            if (this.$wire && typeof this.$wire.sendMessage === 'function') {
+                this.$wire.sendMessage(text);
             }
         },
 

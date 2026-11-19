@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Setting;
+use App\Services\StorageService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
@@ -79,5 +80,8 @@ class SettingsServiceProvider extends ServiceProvider
         if ($fromName = $get('email.from_name')) {
             config(['mail.from.name' => $fromName]);
         }
+
+        // Dynamic Storage & S3 Configuration.
+        StorageService::applyDynamicConfig();
     }
 }

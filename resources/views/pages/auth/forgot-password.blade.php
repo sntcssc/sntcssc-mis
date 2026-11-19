@@ -6,115 +6,7 @@
 <x-layouts::auth :title="__('Forgot password')">
     <div
         class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm"
-        x-data="{
-            resetMethod: '{{ $smsEnabled ? 'otp' : 'email' }}', // 'otp' or 'email'
-            identifier: '',
-            otpCode: '',
-            password: '',
-            passwordConfirmation: '',
-            step: 'request', // 'request' or 'verify'
-            loading: false,
-            countdown: 0,
-            timer: null,
-            errorMessage: '',
-            statusMessage: '{{ session('status') }}',
-            plainOtp: '',
-
-            startCountdown(seconds = 60) {
-                this.countdown = seconds;
-                if (this.timer) clearInterval(this.timer);
-                this.timer = setInterval(() => {
-                    if (this.countdown > 0) {
-                        this.countdown--;
-                    } else {
-                        clearInterval(this.timer);
-                    }
-                }, 1000);
-            },
-
-            async sendOtp() {
-                if (! this.identifier) {
-                    this.errorMessage = '{{ __('Please enter your registered email or mobile number.') }}';
-                    return;
-                }
-
-                this.loading = true;
-                this.errorMessage = '';
-
-                try {
-                    const response = await fetch('{{ route('password.otp.send') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        },
-                        body: JSON.stringify({
-                            identifier: this.identifier
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (! response.ok) {
-                        this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Failed to dispatch reset code.') }}');
-                    } else {
-                        this.step = 'verify';
-                        this.statusMessage = data.message;
-                        this.plainOtp = data.plain_code || '';
-                        this.startCountdown(data.cooldown_seconds || 60);
-                    }
-                } catch (e) {
-                    this.errorMessage = '{{ __('Network error. Please try again.') }}';
-                } finally {
-                    this.loading = false;
-                }
-            },
-
-            async resetPassword() {
-                if (! this.otpCode || ! this.password || ! this.passwordConfirmation) {
-                    this.errorMessage = '{{ __('Please fill in all required fields.') }}';
-                    return;
-                }
-
-                if (this.password !== this.passwordConfirmation) {
-                    this.errorMessage = '{{ __('Password confirmation does not match.') }}';
-                    return;
-                }
-
-                this.loading = true;
-                this.errorMessage = '';
-
-                try {
-                    const response = await fetch('{{ route('password.otp.reset') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        },
-                        body: JSON.stringify({
-                            identifier: this.identifier,
-                            code: this.otpCode,
-                            password: this.password,
-                            password_confirmation: this.passwordConfirmation
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (! response.ok) {
-                        this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Password reset failed.') }}');
-                    } else {
-                        window.location.href = data.redirect_url || '{{ route('login') }}';
-                    }
-                } catch (e) {
-                    this.errorMessage = '{{ __('Network error. Please try again.') }}';
-                } finally {
-                    this.loading = false;
-                }
-            }
-        }"
+        x-data="forgotPasswordHandler()"
     >
         <div class="flex flex-col items-center mb-6">
             <a href="{{ route('home') }}" wire:navigate class="mb-3 transition-opacity hover:opacity-90">
@@ -130,7 +22,7 @@
                 <div class="flex gap-1 p-1 bg-secondary/50 rounded-lg mt-6 w-full">
                     <button
                         type="button"
-                        x-on:click="resetMethod = 'otp'; step = 'request'; errorMessage = ''"
+                        x-on:click="resetMethod = 'otp'; step = 'request'; errorMessage = ''; $nextTick(() => window.initRecaptchaOnDemand?.())"
                         class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer"
                         :class="resetMethod === 'otp' ? 'bg-card text-foreground shadow-sm font-semibold' : 'text-muted-foreground hover:text-foreground'"
                     >
@@ -139,7 +31,7 @@
                     </button>
                     <button
                         type="button"
-                        x-on:click="resetMethod = 'email'; errorMessage = ''"
+                        x-on:click="resetMethod = 'email'; errorMessage = ''; $nextTick(() => window.initRecaptchaOnDemand?.())"
                         class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer"
                         :class="resetMethod === 'email' ? 'bg-card text-foreground shadow-sm font-semibold' : 'text-muted-foreground hover:text-foreground'"
                     >
@@ -181,6 +73,10 @@
                     <p class="text-xs text-muted-foreground">{{ __('We will dispatch a secure one-time code to verify your identity.') }}</p>
                 </div>
 
+                <div id="forgot-otp-captcha-container" class="space-y-1" x-on:keydown.enter.prevent="sendOtp()">
+                    <x-captcha action="forgot_password" :options="['input_name' => 'otp_captcha_answer', 'token_name' => 'otp_captcha_token']" />
+                </div>
+
                 <button
                     type="button"
                     x-on:click="sendOtp()"
@@ -199,7 +95,7 @@
             <div x-show="step === 'verify'" x-cloak class="space-y-4">
                 <div class="rounded-xl border border-border bg-secondary/20 p-3 text-center">
                     <p class="text-xs text-muted-foreground">{{ __('Reset code sent to:') }} <strong class="text-foreground" x-text="identifier"></strong></p>
-                    <button type="button" x-on:click="step = 'request'" class="text-[11px] text-emerald-500 hover:underline mt-0.5 cursor-pointer">
+                    <button type="button" x-on:click="step = 'request'; refreshForgotCaptcha()" class="text-[11px] text-emerald-500 hover:underline mt-0.5 cursor-pointer">
                         {{ __('Change recipient') }}
                     </button>
                 </div>
@@ -294,6 +190,12 @@
                     :error="$errors->first('email')"
                 />
 
+                <x-captcha action="forgot_password" />
+
+                @if ($errors->has('captcha'))
+                    <p class="text-xs text-rose-500 font-medium">{{ $errors->first('captcha') }}</p>
+                @endif
+
                 <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold cursor-pointer" data-test="email-password-reset-link-button">
                     {{ __('Send Reset Link') }}
                 </x-ui.button>
@@ -307,4 +209,177 @@
             </a>
         </p>
     </div>
+
+    <script>
+        function forgotPasswordHandler() {
+            return {
+                resetMethod: '{{ $smsEnabled ? 'otp' : 'email' }}',
+                identifier: '',
+                otpCode: '',
+                password: '',
+                passwordConfirmation: '',
+                step: 'request',
+                loading: false,
+                countdown: 0,
+                timer: null,
+                errorMessage: '',
+                statusMessage: '{{ session('status') }}',
+                plainOtp: '',
+
+                startCountdown(seconds = 60) {
+                    this.countdown = seconds;
+                    if (this.timer) clearInterval(this.timer);
+                    this.timer = setInterval(() => {
+                        if (this.countdown > 0) {
+                            this.countdown--;
+                        } else {
+                            clearInterval(this.timer);
+                        }
+                    }, 1000);
+                },
+
+                refreshForgotCaptcha() {
+                    const container = document.getElementById('forgot-otp-captcha-container');
+                    if (! container) return;
+                    const refreshBtn = container.querySelector('.captcha-refresh-btn') || container.querySelector('button[aria-label="Refresh security code"]');
+                    if (refreshBtn) refreshBtn.click();
+                    const ans = container.querySelector('.captcha-answer-input') || container.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                    if (ans) {
+                        ans.value = '';
+                    }
+                },
+
+                async sendOtp() {
+                    if (! this.identifier) {
+                        this.errorMessage = '{{ __('Please enter your registered email or mobile number.') }}';
+                        return;
+                    }
+
+                    const container = document.getElementById('forgot-otp-captcha-container');
+                    if (this.step === 'verify') {
+                        this.step = 'request';
+                        this.errorMessage = '{{ __('Please complete security verification to resend code.') }}';
+                        this.refreshForgotCaptcha();
+                        return;
+                    }
+
+                    let captchaToken = '';
+                    let captchaAnswer = '';
+                    let recaptchaResponse = '';
+
+                    if (container) {
+                        const tokenEl = container.querySelector('.captcha-token-input') || container.querySelector('input[name=otp_captcha_token], input[name=captcha_token]');
+                        const answerEl = container.querySelector('.captcha-answer-input') || container.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                        const recaptchaEl = container.querySelector('textarea[name=g-recaptcha-response], input[name=g-recaptcha-response]');
+
+                        if (tokenEl) captchaToken = tokenEl.value;
+                        if (answerEl) captchaAnswer = answerEl.value;
+                        if (recaptchaEl) recaptchaResponse = recaptchaEl.value;
+
+                        if (answerEl && ! captchaAnswer.trim()) {
+                            this.errorMessage = '{{ __('Please enter the security verification code.') }}';
+                            answerEl.focus();
+                            return;
+                        }
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+
+                    try {
+                        const payload = {
+                            identifier: this.identifier,
+                        };
+
+                        if (captchaToken) {
+                            payload.captcha_token = captchaToken;
+                            payload.otp_captcha_token = captchaToken;
+                        }
+                        if (captchaAnswer) {
+                            payload.captcha_answer = captchaAnswer;
+                            payload.otp_captcha_answer = captchaAnswer;
+                        }
+                        if (recaptchaResponse) {
+                            payload['g-recaptcha-response'] = recaptchaResponse;
+                        }
+
+                        const response = await fetch('{{ route('password.otp.send') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const data = await response.json();
+
+                        if (! response.ok) {
+                            this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Failed to dispatch reset code.') }}');
+
+                            if (data.errors && data.errors.captcha) {
+                                this.refreshForgotCaptcha();
+                                const ans = container?.querySelector('.captcha-answer-input') || container?.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                                if (ans) ans.focus();
+                            }
+                        } else {
+                            this.step = 'verify';
+                            this.statusMessage = data.message;
+                            this.plainOtp = data.plain_code || '';
+                            this.startCountdown(data.cooldown_seconds || 60);
+                        }
+                    } catch (e) {
+                        this.errorMessage = '{{ __('Network error. Please try again.') }}';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async resetPassword() {
+                    if (! this.otpCode || ! this.password || ! this.passwordConfirmation) {
+                        this.errorMessage = '{{ __('Please fill in all required fields.') }}';
+                        return;
+                    }
+
+                    if (this.password !== this.passwordConfirmation) {
+                        this.errorMessage = '{{ __('Password confirmation does not match.') }}';
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+
+                    try {
+                        const response = await fetch('{{ route('password.otp.reset') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            body: JSON.stringify({
+                                identifier: this.identifier,
+                                code: this.otpCode,
+                                password: this.password,
+                                password_confirmation: this.passwordConfirmation
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (! response.ok) {
+                            this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Password reset failed.') }}');
+                        } else {
+                            window.location.href = data.redirect_url || '{{ route('login') }}';
+                        }
+                    } catch (e) {
+                        this.errorMessage = '{{ __('Network error. Please try again.') }}';
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            };
+        }
+    </script>
 </x-layouts::auth>

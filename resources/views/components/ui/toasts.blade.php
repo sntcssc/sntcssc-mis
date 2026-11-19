@@ -1,5 +1,5 @@
 @php
-    $flash = collect(session('toasts', []));
+    $flash = collect(session()->pull('toasts', []));
 @endphp
 
 <div

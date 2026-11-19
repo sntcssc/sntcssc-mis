@@ -105,7 +105,7 @@ class OtpVerificationController extends Controller
             }
         }
 
-        $team = $targetUser?->currentTeam ?? $targetUser?->personalTeam();
+        $team = $targetUser?->ensureCurrentTeam();
         $redirectUrl = ($targetUser && $team)
             ? route('dashboard', ['current_team' => $team->slug])
             : ($targetUser ? route('home') : route('login'));

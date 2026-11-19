@@ -24,6 +24,10 @@ class LocaleController extends Controller
 
         Cookie::queue('locale', $validated['locale'], 60 * 24 * 365);
 
+        if ($request->user()) {
+            $request->user()->setPreference('locale', $validated['locale']);
+        }
+
         return redirect()->back();
     }
 }

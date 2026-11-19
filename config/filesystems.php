@@ -42,6 +42,8 @@ return [
             'driver' => 'local',
             'root' => storage_path('app/public'),
             'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/storage',
+            // need the URL to contain /public/storage as in project used Storage::disk($disk)->url($path), configure the public disk in config/filesystems.php
+            // 'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/public/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

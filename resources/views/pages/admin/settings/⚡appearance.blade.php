@@ -23,6 +23,7 @@ new #[Layout('layouts.app')] #[Title('Appearance & Theme Settings')] class exten
         'radius' => '0.625rem',
         'dark_mode' => 'system',
         'sidebar_theme' => 'default',
+        'default_fullscreen' => 'normal',
         'font_family' => 'Inter',
         'logo' => '',
         'icon' => '',
@@ -84,6 +85,7 @@ new #[Layout('layouts.app')] #[Title('Appearance & Theme Settings')] class exten
             'form.radius' => ['required', 'string', 'max:20'],
             'form.dark_mode' => ['required', 'string', 'in:system,light,dark'],
             'form.sidebar_theme' => ['required', 'string', 'in:default,dark,light'],
+            'form.default_fullscreen' => ['required', 'string', 'in:normal,fullscreen'],
             'form.font_family' => ['required', 'string', 'max:50'],
             'form.custom_css' => ['nullable', 'string', 'max:10000'],
             'logoFile' => ['nullable', 'image', 'mimes:png,jpg,jpeg,svg,webp', 'max:5120'],
@@ -297,6 +299,15 @@ new #[Layout('layouts.app')] #[Title('Appearance & Theme Settings')] class exten
                         'default' => __('Default Neutral'),
                         'dark' => __('Deep Slate Dark'),
                         'light' => __('Clean Light Bordered'),
+                    ]"
+                />
+
+                <x-ui.select
+                    wire:model="form.default_fullscreen"
+                    :label="__('Default Viewport Mode') . ' *'"
+                    :options="[
+                        'normal' => __('Standard Browser Window (Normal)'),
+                        'fullscreen' => __('Full Screen Mode (Auto-expand on launch)'),
                     ]"
                 />
 

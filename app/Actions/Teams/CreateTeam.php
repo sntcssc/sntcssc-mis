@@ -14,6 +14,10 @@ class CreateTeam
      */
     public function handle(User $user, string $name, bool $isPersonal = false): Team
     {
+        if (! $isPersonal) {
+            abort_unless($user->isAdmin(), 403, __('Only administrators can create teams.'));
+        }
+
         return DB::transaction(function () use ($user, $name, $isPersonal) {
             $team = Team::create([
                 'name' => $name,

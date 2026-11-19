@@ -17,34 +17,59 @@ function extractEventPayload(detail) {
     return { value: detail };
 }
 
+function extractModalName(detail) {
+    if (!detail) return null;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        if (typeof detail[0] === 'string') return detail[0];
+        if (detail[0] && typeof detail[0] === 'object') {
+            return detail[0].name || detail[0].id || detail[0].value || null;
+        }
+    }
+    if (typeof detail === 'object') {
+        if (typeof detail.name === 'string') return detail.name;
+        if (typeof detail.id === 'string') return detail.id;
+        if (typeof detail.value === 'string') return detail.value;
+        if (typeof detail[0] === 'string') return detail[0];
+        if (detail[0] && typeof detail[0] === 'object') {
+            return detail[0].name || detail[0].id || detail[0].value || null;
+        }
+    }
+    return null;
+}
+
 let modalBridgeBound = false;
 function bindModalBridges() {
     if (modalBridgeBound) return;
     modalBridgeBound = true;
 
     // Bridge Livewire dispatches to the Alpine modal store:
-    // $this->dispatch('modal-open', name: 'create-team')
-    window.addEventListener('modal-open', (event) => {
-        const payload = extractEventPayload(event.detail);
-        const name = payload.name || (typeof event.detail === 'string' ? event.detail : null);
+    // Supports both 'modal-open' and 'open-modal', 'modal-close' and 'close-modal'
+    const handleModalOpen = (event) => {
+        const name = extractModalName(event.detail);
         if (name) {
             const alpine = window.Alpine || (window.Livewire && window.Livewire.Alpine);
             try {
                 alpine?.store('modals')?.open(name);
             } catch (e) {}
         }
-    });
+    };
 
-    window.addEventListener('modal-close', (event) => {
-        const payload = extractEventPayload(event.detail);
-        const name = payload.name || (typeof event.detail === 'string' ? event.detail : null);
+    const handleModalClose = (event) => {
+        const name = extractModalName(event.detail);
         if (name) {
             const alpine = window.Alpine || (window.Livewire && window.Livewire.Alpine);
             try {
                 alpine?.store('modals')?.close(name);
             } catch (e) {}
         }
-    });
+    };
+
+    window.addEventListener('modal-open', handleModalOpen);
+    window.addEventListener('open-modal', handleModalOpen);
+
+    window.addEventListener('modal-close', handleModalClose);
+    window.addEventListener('close-modal', handleModalClose);
 }
 
 function initAlpineStores() {

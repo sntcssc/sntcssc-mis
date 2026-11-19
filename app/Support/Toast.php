@@ -15,24 +15,40 @@ class Toast
         session()->push('toasts', [$type, $message]);
     }
 
-    public static function success(string $message): void
+    public static function success(mixed $componentOrMessage, ?string $message = null): void
     {
-        static::add('success', $message);
+        if ($componentOrMessage instanceof Component && $message !== null) {
+            static::dispatch($componentOrMessage, 'success', $message);
+        } else {
+            static::add('success', (string) $componentOrMessage);
+        }
     }
 
-    public static function error(string $message): void
+    public static function error(mixed $componentOrMessage, ?string $message = null): void
     {
-        static::add('error', $message);
+        if ($componentOrMessage instanceof Component && $message !== null) {
+            static::dispatch($componentOrMessage, 'error', $message);
+        } else {
+            static::add('error', (string) $componentOrMessage);
+        }
     }
 
-    public static function warning(string $message): void
+    public static function warning(mixed $componentOrMessage, ?string $message = null): void
     {
-        static::add('warning', $message);
+        if ($componentOrMessage instanceof Component && $message !== null) {
+            static::dispatch($componentOrMessage, 'warning', $message);
+        } else {
+            static::add('warning', (string) $componentOrMessage);
+        }
     }
 
-    public static function info(string $message): void
+    public static function info(mixed $componentOrMessage, ?string $message = null): void
     {
-        static::add('info', $message);
+        if ($componentOrMessage instanceof Component && $message !== null) {
+            static::dispatch($componentOrMessage, 'info', $message);
+        } else {
+            static::add('info', (string) $componentOrMessage);
+        }
     }
 
     /**

@@ -56,10 +56,16 @@ new #[Title('Profile settings')] class extends Component {
         $this->id_number = $user->id_number ?? '';
         $this->designation = $user->designation ?? '';
 
-        $this->language = (string) (session('locale') ?? Setting::get('localization.language', 'en'));
+        $this->language = (string) ($user?->getPreference('locale') ?? session('locale') ?? Setting::get('localization.language', 'en'));
         $this->timezone = (string) Setting::get('localization.timezone', 'Asia/Kolkata');
         $this->date_format = (string) Setting::get('localization.date_format', 'd M Y');
         $this->time_format = (string) Setting::get('localization.time_format', 'h:i A');
+    }
+
+    #[Computed]
+    public function isAdmin(): bool
+    {
+        return Auth::user()?->isAdmin() ?? false;
     }
 
     public function updatedAvatarFile(): void
@@ -141,26 +147,64 @@ new #[Title('Profile settings')] class extends Component {
 
     public function savePreferences(): void
     {
-        $this->validate([
-            'language' => ['required', 'string', 'in:en,hi,bn'],
-            'timezone' => ['required', 'string', 'max:100'],
-            'date_format' => ['required', 'string', 'max:50'],
-            'time_format' => ['required', 'string', 'max:50'],
-        ]);
+        $user = Auth::user();
+        $isAdmin = $user?->isAdmin() ?? false;
 
-        $userId = Auth::id();
+        if ($isAdmin) {
+            $this->validate([
+                'language' => ['required', 'string', 'in:en,hi,bn'],
+                'timezone' => ['required', 'string', 'max:100'],
+                'date_format' => ['required', 'string', 'max:50'],
+                'time_format' => ['required', 'string', 'max:50'],
+            ]);
 
-        Setting::set('localization.language', $this->language, $userId);
-        Setting::set('localization.timezone', $this->timezone, $userId);
-        Setting::set('localization.date_format', $this->date_format, $userId);
-        Setting::set('localization.time_format', $this->time_format, $userId);
+            $userId = Auth::id();
 
-        Setting::flushCache();
+            // Administrators configure system-wide timezone and date/time format preferences
+            Setting::set('localization.timezone', $this->timezone, $userId);
+            Setting::set('localization.date_format', $this->date_format, $userId);
+            Setting::set('localization.time_format', $this->time_format, $userId);
+
+            Setting::flushCache();
+        } else {
+            // Non-admin users and students can ONLY update their personal language preference
+            $this->validate([
+                'language' => ['required', 'string', 'in:en,hi,bn'],
+            ]);
+        }
+
+        // Language changes for that user instead of the whole system
+        if ($user) {
+            $user->setPreference('locale', $this->language);
+        }
 
         session(['locale' => $this->language]);
+        Cookie::queue('locale', $this->language, 60 * 24 * 365);
         app()->setLocale($this->language);
 
-        Toast::dispatch($this, 'success', __('Preferences saved and synchronized with system settings.'));
+        if ($isAdmin) {
+            Toast::dispatch($this, 'success', __('System preferences and language saved successfully.'));
+        } else {
+            Toast::dispatch($this, 'success', __('Language preference updated successfully for your account.'));
+        }
+    }
+
+    public function saveLanguage(): void
+    {
+        $this->validate([
+            'language' => ['required', 'string', 'in:en,hi,bn'],
+        ]);
+
+        $user = Auth::user();
+        if ($user) {
+            $user->setPreference('locale', $this->language);
+        }
+
+        session(['locale' => $this->language]);
+        Cookie::queue('locale', $this->language, 60 * 24 * 365);
+        app()->setLocale($this->language);
+
+        Toast::dispatch($this, 'success', __('Language preference updated successfully for your account.'));
     }
 
     /**
@@ -190,6 +234,10 @@ new #[Title('Profile settings')] class extends Component {
     #[Computed]
     public function showDeleteUser(): bool
     {
+        if (! (bool) Setting::get('system.allow_account_deletion', false)) {
+            return false;
+        }
+
         return ! Auth::user() instanceof MustVerifyEmail
             || (Auth::user() instanceof MustVerifyEmail && Auth::user()->hasVerifiedEmail());
     }
@@ -355,70 +403,103 @@ new #[Title('Profile settings')] class extends Component {
             </div>
         </form>
 
-        {{-- System Preferences Card --}}
-        <form wire:submit="savePreferences" class="space-y-4 rounded-xl border border-border bg-card p-5 mt-6 shadow-xs">
-            <div class="flex items-center gap-2 pb-3 border-b border-border">
-                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <x-icon name="sliders" class="h-4 w-4"/>
+        @if ($this->isAdmin)
+            {{-- System Preferences Card (Administrators Only) --}}
+            <form wire:submit="savePreferences" class="space-y-4 rounded-xl border border-border bg-card p-5 mt-6 shadow-xs">
+                <div class="flex items-center gap-2 pb-3 border-b border-border">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <x-icon name="sliders" class="h-4 w-4"/>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold">{{ __('System Preferences') }}</h3>
+                        <p class="text-xs text-muted-foreground">{{ __('Interface language, timezone, and display formats.') }}</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 class="text-sm font-semibold">{{ __('System Preferences') }}</h3>
-                    <p class="text-xs text-muted-foreground">{{ __('Interface language, timezone, and display formats.') }}</p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <x-ui.select
+                        wire:model="language"
+                        :label="__('Language')"
+                        :options="[
+                            'en' => 'English',
+                            'hi' => 'हिन्दी (Hindi)',
+                            'bn' => 'বাংলা (Bengali)',
+                        ]"
+                    />
+
+                    <x-ui.select
+                        wire:model="timezone"
+                        :label="__('Timezone')"
+                        :options="[
+                            'Asia/Kolkata' => 'Asia/Kolkata (IST +5:30)',
+                            'Asia/Dhaka' => 'Asia/Dhaka (BST +6:00)',
+                            'Asia/Dubai' => 'Asia/Dubai (GST +4:00)',
+                            'UTC' => 'UTC (Greenwich +0:00)',
+                            'America/New_York' => 'America/New_York (EST -5:00)',
+                            'Europe/London' => 'Europe/London (GMT +0:00)',
+                        ]"
+                    />
+
+                    <x-ui.select
+                        wire:model="date_format"
+                        :label="__('Date Format')"
+                        :options="[
+                            'd M Y' => '23 Aug 2026 (d M Y)',
+                            'd/m/Y' => '23/08/2026 (d/m/Y)',
+                            'Y-m-d' => '2026-08-23 (Y-m-d)',
+                            'd-m-Y' => '23-08-2026 (d-m-Y)',
+                            'jS F Y' => '23rd August 2026 (jS F Y)',
+                        ]"
+                    />
+
+                    <x-ui.select
+                        wire:model="time_format"
+                        :label="__('Time Format')"
+                        :options="[
+                            'h:i A' => '05:30 PM (12-Hour)',
+                            'H:i' => '17:30 (24-Hour)',
+                        ]"
+                    />
                 </div>
-            </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <x-ui.select
-                    wire:model="language"
-                    :label="__('Language')"
-                    :options="[
-                        'en' => 'English',
-                        'hi' => 'हिन्दी (Hindi)',
-                        'bn' => 'বাংলা (Bengali)',
-                    ]"
-                />
+                <div class="flex items-center justify-end pt-2">
+                    <x-ui.button type="submit">
+                        {{ __('Save preferences') }}
+                    </x-ui.button>
+                </div>
+            </form>
+        @else
+            {{-- User Language Preference Card (Students and Other Non-Admin Users) --}}
+            <form wire:submit="saveLanguage" class="space-y-4 rounded-xl border border-border bg-card p-5 mt-6 shadow-xs">
+                <div class="flex items-center gap-2 pb-3 border-b border-border">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <x-icon name="globe" class="h-4 w-4"/>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold">{{ __('Language Preference') }}</h3>
+                        <p class="text-xs text-muted-foreground">{{ __('Select your preferred interface language. This will apply only to your account.') }}</p>
+                    </div>
+                </div>
 
-                <x-ui.select
-                    wire:model="timezone"
-                    :label="__('Timezone')"
-                    :options="[
-                        'Asia/Kolkata' => 'Asia/Kolkata (IST +5:30)',
-                        'Asia/Dhaka' => 'Asia/Dhaka (BST +6:00)',
-                        'Asia/Dubai' => 'Asia/Dubai (GST +4:00)',
-                        'UTC' => 'UTC (Greenwich +0:00)',
-                        'America/New_York' => 'America/New_York (EST -5:00)',
-                        'Europe/London' => 'Europe/London (GMT +0:00)',
-                    ]"
-                />
+                <div class="max-w-md">
+                    <x-ui.select
+                        wire:model="language"
+                        :label="__('Language')"
+                        :options="[
+                            'en' => 'English',
+                            'hi' => 'हिन्दी (Hindi)',
+                            'bn' => 'বাংলা (Bengali)',
+                        ]"
+                    />
+                </div>
 
-                <x-ui.select
-                    wire:model="date_format"
-                    :label="__('Date Format')"
-                    :options="[
-                        'd M Y' => '23 Aug 2026 (d M Y)',
-                        'd/m/Y' => '23/08/2026 (d/m/Y)',
-                        'Y-m-d' => '2026-08-23 (Y-m-d)',
-                        'd-m-Y' => '23-08-2026 (d-m-Y)',
-                        'jS F Y' => '23rd August 2026 (jS F Y)',
-                    ]"
-                />
-
-                <x-ui.select
-                    wire:model="time_format"
-                    :label="__('Time Format')"
-                    :options="[
-                        'h:i A' => '05:30 PM (12-Hour)',
-                        'H:i' => '17:30 (24-Hour)',
-                    ]"
-                />
-            </div>
-
-            <div class="flex items-center justify-end pt-2">
-                <x-ui.button type="submit">
-                    {{ __('Save preferences') }}
-                </x-ui.button>
-            </div>
-        </form>
+                <div class="flex items-center justify-end pt-2">
+                    <x-ui.button type="submit">
+                        {{ __('Save Language') }}
+                    </x-ui.button>
+                </div>
+            </form>
+        @endif
 
         @if ($this->showDeleteUser)
             <div class="mt-6">

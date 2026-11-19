@@ -1,9 +1,11 @@
 <?php
 
 use App\Actions\Teams\CreateTeam;
+use App\Models\Team;
 use App\Rules\TeamName;
 use App\Support\Toast;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Component;
 
 new class extends Component {
@@ -11,6 +13,9 @@ new class extends Component {
 
     public function createTeam(CreateTeam $createTeam): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+        Gate::authorize('create', Team::class);
+
         $validated = $this->validate([
             'teamName' => ['required', 'string', 'max:255', new TeamName],
         ]);
@@ -27,25 +32,29 @@ new class extends Component {
     }
 }; ?>
 
-<x-ui.modal name="create-team" max-width="max-w-md" :title="__('Create a new team')" :description="__('Give your team a name to get started.')">
-    <form wire:submit="createTeam" class="space-y-5">
-        <x-ui.input
-            wire:model="teamName"
-            :label="__('Team name')"
-            type="text"
-            required
-            :error="$errors->first('teamName')"
-            data-test="switcher-create-team-name"
-        />
+<div>
+    @if (auth()->user()?->isAdmin())
+        <x-ui.modal name="create-team" max-width="max-w-md" :title="__('Create a new team')" :description="__('Give your team a name to get started.')">
+            <form wire:submit="createTeam" class="space-y-5">
+                <x-ui.input
+                    wire:model="teamName"
+                    :label="__('Team name')"
+                    type="text"
+                    required
+                    :error="$errors->first('teamName')"
+                    data-test="switcher-create-team-name"
+                />
 
-        <div class="flex justify-end gap-2">
-            <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('create-team')">
-                {{ __('Cancel') }}
-            </x-ui.button>
+                <div class="flex justify-end gap-2">
+                    <x-ui.button variant="outline" type="button" x-data x-on:click="$store.modals.close('create-team')">
+                        {{ __('Cancel') }}
+                    </x-ui.button>
 
-            <x-ui.button type="submit" data-test="switcher-create-team-submit">
-                {{ __('Create team') }}
-            </x-ui.button>
-        </div>
-    </form>
-</x-ui.modal>
+                    <x-ui.button type="submit" data-test="switcher-create-team-submit">
+                        {{ __('Create team') }}
+                    </x-ui.button>
+                </div>
+            </form>
+        </x-ui.modal>
+    @endif
+</div>

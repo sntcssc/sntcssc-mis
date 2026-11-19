@@ -98,6 +98,10 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             abort(403, __('Live chat is currently disabled by administrator.'));
         }
 
+        if (! auth()->user()?->can('chat.access') && ! auth()->user()?->hasRole('Super Administrator')) {
+            abort(403, __('You do not have permission to access live chat.'));
+        }
+
         $this->touchUserOnline();
 
         $targetUuid = $conversation ?? $c ?? $this->activeConversationUuid ?? request()->query('conversation') ?? request()->query('c');
@@ -173,7 +177,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         }
     }
 
-    public function sendMessage(): void
+    public function sendMessage(?string $customText = null): void
     {
         $this->touchUserOnline();
 
@@ -193,7 +197,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             return;
         }
 
-        $text = trim($this->messageText);
+        $text = trim($customText ?? $this->messageText ?? '');
         if (empty($text) && empty($this->attachments)) {
             return;
         }
@@ -481,6 +485,12 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     public function promptCall(string $callType, bool $isGroup = false): void
     {
         $callType = in_array(strtolower($callType), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
+        if ($callType === ChatCall::TYPE_AUDIO) {
+            abort_unless(auth()->user()?->can('chat.voice_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start voice calls.'));
+        } else {
+            abort_unless(auth()->user()?->can('chat.video_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start video calls.'));
+        }
+
         $this->pendingCallType = $callType;
         $this->isPendingGroupCall = $isGroup;
 
@@ -517,6 +527,12 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     public function launchConfirmedCall(int $receiverId, string $type = 'video', ?int $conversationId = null, bool $startMuted = false, bool $startVideoOff = false): void
     {
         $type = in_array(strtolower($type), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
+        if ($type === ChatCall::TYPE_AUDIO) {
+            abort_unless(auth()->user()?->can('chat.voice_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start voice calls.'));
+        } else {
+            abort_unless(auth()->user()?->can('chat.video_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start video calls.'));
+        }
+
         $requireWebsocket = (bool) Setting::get('chat.require_websocket_for_calls', true);
         /** @var WebRtcCallService $webrtcService */
         $webrtcService = app(WebRtcCallService::class);
@@ -545,6 +561,11 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
     public function launchConfirmedGroupCall(int $conversationId, string $type = 'video', bool $startMuted = false, bool $startVideoOff = false): void
     {
         $type = in_array(strtolower($type), ['audio', 'voice', 'phone'], true) ? ChatCall::TYPE_AUDIO : ChatCall::TYPE_VIDEO;
+        if ($type === ChatCall::TYPE_AUDIO) {
+            abort_unless(auth()->user()?->can('chat.voice_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start voice calls.'));
+        } else {
+            abort_unless(auth()->user()?->can('chat.video_call') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to start video calls.'));
+        }
         $requireWebsocket = (bool) Setting::get('chat.require_websocket_for_calls', true);
         /** @var WebRtcCallService $webrtcService */
         $webrtcService = app(WebRtcCallService::class);
@@ -587,6 +608,8 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
     public function createGroup(): void
     {
+        abort_unless(auth()->user()?->can('chat.create_group') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to create chat groups.'));
+
         $this->validate([
             'groupTitle' => ['required', 'string', 'min:2', 'max:100'],
             'groupDescription' => ['nullable', 'string', 'max:500'],
@@ -620,6 +643,8 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
     public function createChannel(): void
     {
+        abort_unless(auth()->user()?->can('chat.create_channel') || auth()->user()?->hasRole('Super Administrator'), 403, __('You do not have permission to create chat channels.'));
+
         $this->validate([
             'channelTitle' => ['required', 'string', 'min:2', 'max:100'],
             'channelDescription' => ['nullable', 'string', 'max:500'],
@@ -1017,8 +1042,9 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             'newChatUsers' => $newChatUsers,
             'pollInterval' => $pollInterval,
             'currentUser' => $user,
-            'voiceCallEnabled' => (bool) Setting::get('chat.voice_call_enabled', true),
-            'videoCallEnabled' => (bool) Setting::get('chat.video_call_enabled', true),
+            'transportDriver' => $transportDriver,
+            'voiceCallEnabled' => (bool) Setting::get('chat.voice_call_enabled', true) && ($user?->can('chat.voice_call') ?? false),
+            'videoCallEnabled' => (bool) Setting::get('chat.video_call_enabled', true) && ($user?->can('chat.video_call') ?? false),
             'requireWebsocketForCalls' => (bool) Setting::get('chat.require_websocket_for_calls', true),
             'isRealtimeSupported' => app(WebRtcCallService::class)->isRealtimeSupported(),
         ];
@@ -1050,10 +1076,17 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 <x-ui.avatar :name="$currentUser->name" :initials="$currentUser->initials()" :src="$currentUser->avatarUrl()" size="size-9 text-xs" />
                 <div class="min-w-0">
                     <h2 class="text-sm font-bold text-foreground truncate">{{ __('Live Messages') }}</h2>
-                    <span class="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
-                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        {{ __('Online') }}
-                    </span>
+                    @if ($transportDriver === 'polling')
+                        <span class="text-[11px] text-sky-500 font-medium flex items-center gap-1" title="{{ __('Real-time messages via Livewire Polling (:rate)', ['rate' => $pollInterval ?? '3s']) }}">
+                            <span class="h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+                            {{ __('Polling') }}
+                        </span>
+                    @else
+                        <span class="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
+                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            {{ __('Online') }}
+                        </span>
+                    @endif
                 </div>
             </div>
 
@@ -1080,6 +1113,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 </button>
 
                 <!-- More Options Dropdown (New Group / Channel / Broadcast / Meetings) -->
+                @if(auth()->user()?->canAny(['chat.create_group', 'chat.create_channel', 'meetings.view', 'chat.broadcast']))
                 <x-ui.dropdown width="w-52" offset="mt-1">
                     <x-slot:trigger>
                         <button type="button" class="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer" title="{{ __('Create & Actions') }}">
@@ -1087,20 +1121,31 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                         </button>
                     </x-slot:trigger>
 
-                    <x-ui.dropdown.item icon="users" x-on:click="open = false; $store.modals.open('new-group-modal')">
-                        {{ __('New Group') }}
-                    </x-ui.dropdown.item>
-                    <x-ui.dropdown.item icon="radio" x-on:click="open = false; $store.modals.open('new-channel-modal')">
-                        {{ __('New Channel') }}
-                    </x-ui.dropdown.item>
-                    <x-ui.dropdown.separator />
-                    <x-ui.dropdown.item icon="video" href="{{ route('meetings.index') }}" wire:navigate>
-                        {{ __('Online Meetings Hub') }}
-                    </x-ui.dropdown.item>
-                    <x-ui.dropdown.item icon="send" href="{{ route('admin.chat.broadcast') }}" wire:navigate>
-                        {{ __('Broadcast Hub') }}
-                    </x-ui.dropdown.item>
+                    @can('chat.create_group')
+                        <x-ui.dropdown.item icon="users" x-on:click="open = false; $store.modals.open('new-group-modal')">
+                            {{ __('New Group') }}
+                        </x-ui.dropdown.item>
+                    @endcan
+                    @can('chat.create_channel')
+                        <x-ui.dropdown.item icon="radio" x-on:click="open = false; $store.modals.open('new-channel-modal')">
+                            {{ __('New Channel') }}
+                        </x-ui.dropdown.item>
+                    @endcan
+                    @if((auth()->user()?->can('chat.create_group') || auth()->user()?->can('chat.create_channel')) && (auth()->user()?->can('meetings.view') || auth()->user()?->can('chat.broadcast')))
+                        <x-ui.dropdown.separator />
+                    @endif
+                    @can('meetings.view')
+                        <x-ui.dropdown.item icon="video" href="{{ route('meetings.index') }}" wire:navigate>
+                            {{ __('Online Meetings Hub') }}
+                        </x-ui.dropdown.item>
+                    @endcan
+                    @can('chat.broadcast')
+                        <x-ui.dropdown.item icon="send" href="{{ route('admin.chat.broadcast') }}" wire:navigate>
+                            {{ __('Broadcast Hub') }}
+                        </x-ui.dropdown.item>
+                    @endcan
                 </x-ui.dropdown>
+                @endif
             </div>
         </div>
 
@@ -1275,18 +1320,30 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
 
                 <!-- Call & Options Actions -->
                 <div class="flex items-center gap-1 sm:gap-1.5">
-                    <!-- Live WebSocket Status Indicator -->
-                    <div
-                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all"
-                        :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'"
-                        :title="$store.websocket && $store.websocket.connected ? '{{ __('WebSocket Connected (Laravel Reverb)') }}' : '{{ __('WebSocket Disconnected') }}'"
-                    >
-                        <span class="relative flex h-2 w-2">
-                            <span x-show="$store.websocket && $store.websocket.connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2 w-2" :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
-                        </span>
-                        <span x-text="$store.websocket && $store.websocket.connected ? '{{ __('Live') }}' : '{{ __('Offline') }}'"></span>
-                    </div>
+                    <!-- Live WebSocket / Polling Status Indicator -->
+                    @if ($transportDriver === 'polling')
+                        <div
+                            class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20 transition-all"
+                            title="{{ __('Real-time updates via Livewire Polling (:interval)', ['interval' => $pollInterval ?? '3s']) }}"
+                        >
+                            <span class="relative flex h-2 w-2">
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                            </span>
+                            <span>{{ __('Polling (:rate)', ['rate' => $pollInterval ?? '3s']) }}</span>
+                        </div>
+                    @else
+                        <div
+                            class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all"
+                            :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'"
+                            :title="$store.websocket && $store.websocket.connected ? '{{ __('WebSocket Connected (Laravel Reverb)') }}' : '{{ __('WebSocket Disconnected') }}'"
+                        >
+                            <span class="relative flex h-2 w-2">
+                                <span x-show="$store.websocket && $store.websocket.connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2" :class="$store.websocket && $store.websocket.connected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                            </span>
+                            <span x-text="$store.websocket && $store.websocket.connected ? '{{ __('Live') }}' : '{{ __('Offline') }}'"></span>
+                        </div>
+                    @endif
 
                     <!-- Sound Notification Toggle -->
                     <button
@@ -1395,9 +1452,10 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                 </div>
             </div>
 
-            <!-- WebSocket Disconnected Warning Banner -->
+            <!-- WebSocket Disconnected Warning Banner (Hidden in pure polling mode) -->
+            @if ($transportDriver !== 'polling')
             <div
-                x-show="$store.websocket && !$store.websocket.connected"
+                x-show="$store.websocket && $store.websocket.isConfigured && !$store.websocket.connected"
                 x-cloak
                 x-transition
                 class="px-4 py-2 bg-amber-500/10 dark:bg-amber-950/30 border-b border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2 shrink-0 z-10"
@@ -1417,6 +1475,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                     {{ __('Reconnect') }}
                 </button>
             </div>
+            @endif
 
             <!-- Ongoing Active Group Call Banner -->
             @if ($this->activeGroupCall && $activeConversation && ! $activeConversation->isDirect())
@@ -2010,13 +2069,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                                 wire:model="messageText"
                                 @input="onComposerInput()"
                                 rows="1"
-                                @keydown.enter.exact.prevent="
-                                    clearOwnTyping();
-                                    if ($el.value.trim() || ($wire.attachments && $wire.attachments.length > 0)) {
-                                        playMessageSentChime();
-                                        $wire.sendMessage();
-                                    }
-                                "
+                                @keydown.enter.exact.prevent="submitMessage()"
                                 placeholder="{{ __('Type a message… (Press Enter to send, Shift+Enter for newline)') }}"
                                 class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary resize-none max-h-32 leading-relaxed"
                             ></textarea>
@@ -2031,13 +2084,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
                     @else
                         <button
                             type="button"
-                            @click="
-                                clearOwnTyping();
-                                if (($refs.composerInput && $refs.composerInput.value.trim()) || ($wire.attachments && $wire.attachments.length > 0)) {
-                                    playMessageSentChime();
-                                    $wire.sendMessage();
-                                }
-                            "
+                            @click="submitMessage()"
                             class="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-transform active:scale-95 cursor-pointer shrink-0 shadow-xs mb-0.5"
                             title="{{ __('Send Message') }}"
                         >
@@ -2651,6 +2698,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
         </div>
     </x-ui.modal>
 
+    @can('chat.create_group')
     <!-- 5. Modal: New Group -->
     <x-ui.modal name="new-group-modal" max-width="max-w-md" title="{{ __('Create New Group') }}">
         <div class="space-y-4">
@@ -2731,7 +2779,9 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             </div>
         </div>
     </x-ui.modal>
+    @endcan
 
+    @can('chat.create_channel')
     <!-- 6. Modal: New Broadcast Channel -->
     <x-ui.modal name="new-channel-modal" max-width="max-w-md" title="{{ __('Create Broadcast Channel') }}">
         <div class="space-y-4">
@@ -2807,6 +2857,7 @@ new #[Layout('layouts.app')] #[Title('Live Chat')] class extends Component {
             </div>
         </div>
     </x-ui.modal>
+    @endcan
 
     <!-- 7. Modal: Add Members -->
     <x-ui.modal name="add-member-modal" max-width="max-w-md" title="{{ __('Add Members to Conversation') }}">

@@ -7,6 +7,7 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\Captcha\CaptchaService;
 use App\Services\EmailService;
 use App\Services\OtpService;
 use App\Services\SmsService;
@@ -36,6 +37,15 @@ class CreateNewUser implements CreatesNewUsers
      */
     public function create(array $input): User
     {
+        if (CaptchaService::isEnabled('register')) {
+            $captchaResult = CaptchaService::verifyRequest(request(), 'register');
+            if ($captchaResult->isFailure()) {
+                throw ValidationException::withMessages([
+                    'captcha' => [$captchaResult->message ?? __('Security verification failed. Please try again.')],
+                ]);
+            }
+        }
+
         if (! empty($input['phone'])) {
             $input['phone'] = $this->smsService->normalizePhoneNumber($input['phone']);
         }

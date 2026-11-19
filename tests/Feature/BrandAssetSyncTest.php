@@ -6,6 +6,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -147,6 +148,10 @@ test('uploading logo and icon in appearance settings synchronizes to general set
 });
 
 test('admin profile preferences save and synchronize with system localization settings', function () {
+    Setting::set('localization.language', 'en');
+    Role::firstOrCreate(['name' => 'Super Administrator', 'guard_name' => 'web']);
+    $this->user->assignRole('Super Administrator');
+
     Livewire::test('pages::admin.profile')
         ->set('language', 'hi')
         ->set('timezone', 'Asia/Dubai')
@@ -155,15 +160,22 @@ test('admin profile preferences save and synchronize with system localization se
         ->call('savePreferences')
         ->assertHasNoErrors();
 
-    expect(Setting::get('localization.language'))->toBe('hi')
-        ->and(Setting::get('localization.timezone'))->toBe('Asia/Dubai')
+    // Timezone, date format, and time format update in system settings for admins
+    expect(Setting::get('localization.timezone'))->toBe('Asia/Dubai')
         ->and(Setting::get('localization.date_format'))->toBe('d/m/Y')
         ->and(Setting::get('localization.time_format'))->toBe('H:i')
+        // Language updates for that user session and user preferences instead of mutating the whole system
+        ->and(Setting::get('localization.language'))->toBe('en')
+        ->and($this->user->fresh()->getPreference('locale'))->toBe('hi')
         ->and(session('locale'))->toBe('hi')
         ->and(app()->getLocale())->toBe('hi');
 });
 
 test('settings profile preferences save and synchronize with system localization settings', function () {
+    Setting::set('localization.language', 'en');
+    Role::firstOrCreate(['name' => 'Super Administrator', 'guard_name' => 'web']);
+    $this->user->assignRole('Super Administrator');
+
     Livewire::test('pages::settings.profile')
         ->set('language', 'bn')
         ->set('timezone', 'UTC')
@@ -172,10 +184,13 @@ test('settings profile preferences save and synchronize with system localization
         ->call('savePreferences')
         ->assertHasNoErrors();
 
-    expect(Setting::get('localization.language'))->toBe('bn')
-        ->and(Setting::get('localization.timezone'))->toBe('UTC')
+    // Timezone, date format, and time format update in system settings for admins
+    expect(Setting::get('localization.timezone'))->toBe('UTC')
         ->and(Setting::get('localization.date_format'))->toBe('Y-m-d')
         ->and(Setting::get('localization.time_format'))->toBe('h:i A')
+        // Language updates for that user session and user preferences instead of mutating the whole system
+        ->and(Setting::get('localization.language'))->toBe('en')
+        ->and($this->user->fresh()->getPreference('locale'))->toBe('bn')
         ->and(session('locale'))->toBe('bn')
         ->and(app()->getLocale())->toBe('bn');
 });

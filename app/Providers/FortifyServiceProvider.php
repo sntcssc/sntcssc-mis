@@ -11,6 +11,7 @@ use App\Http\Responses\TwoFactorLoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
 use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Services\Captcha\CaptchaService;
 use App\Services\SmsService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\RegisterResponse as RegisterResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
@@ -58,6 +60,15 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::createUsersUsing(CreateNewUser::class);
 
         Fortify::authenticateUsing(function (Request $request) {
+            if (CaptchaService::isEnabled('login')) {
+                $captchaResult = CaptchaService::verifyRequest($request, 'login');
+                if ($captchaResult->isFailure()) {
+                    throw ValidationException::withMessages([
+                        'captcha' => [$captchaResult->message ?? __('Security verification failed. Please try again.')],
+                    ]);
+                }
+            }
+
             $login = $request->input(Fortify::username()) ?: $request->input('login') ?: $request->input('email') ?: $request->input('phone');
             $password = $request->input('password');
 

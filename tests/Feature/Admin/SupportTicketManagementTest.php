@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AuditLog;
+use App\Models\StudentProfile;
 use App\Models\Ticket;
 use App\Models\TicketCannedResponse;
 use App\Models\TicketCategory;
@@ -9,6 +10,7 @@ use App\Models\User;
 use App\Services\RbacService;
 use App\Services\TicketService;
 use Database\Seeders\TicketSystemSeeder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -205,4 +207,54 @@ test('sla monitoring detects response and resolution deadline breaches', functio
 test('artisan sla breach command executes cleanly', function () {
     $this->artisan('app:tickets:check-sla')
         ->assertSuccessful();
+});
+
+test('admin can open and view support ticket with student profile and enrollments without undefined relationship error', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole('Super Administrator');
+
+    $student = User::factory()->create([
+        'name' => 'Rahul Sharma',
+        'email' => 'rahul@example.com',
+        'student_id' => 'STU-2026-001',
+    ]);
+    $student->assignRole('Student');
+
+    $profile = StudentProfile::create([
+        'user_id' => $student->id,
+        'father_name' => 'Vijay Sharma',
+        'category' => 'OBC',
+    ]);
+
+    $category = TicketCategory::first();
+
+    /** @var TicketService $service */
+    $service = app(TicketService::class);
+    $ticket = $service->createTicket(
+        data: [
+            'subject' => 'Admit card correction request',
+            'description' => 'Need to update DOB on hall ticket.',
+            'category_id' => $category->id,
+            'priority' => Ticket::PRIORITY_HIGH,
+        ],
+        creator: $student
+    );
+
+    Livewire::actingAs($admin)
+        ->test('pages::admin.tickets.show', ['ticket' => $ticket->ticket_number])
+        ->assertOk()
+        ->assertSee($ticket->ticket_number)
+        ->assertSee('Admit card correction request')
+        ->assertSee('Rahul Sharma')
+        ->assertSee('STU-2026-001');
+});
+
+test('student profile has enrollments relationship defined', function () {
+    $user = User::factory()->create();
+    $profile = StudentProfile::create([
+        'user_id' => $user->id,
+    ]);
+
+    expect($profile->enrollments())->toBeInstanceOf(HasMany::class);
+    expect($profile->enrollments)->toHaveCount(0);
 });

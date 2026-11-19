@@ -1,10 +1,15 @@
 @php
+    $user = auth()->user();
     $tabs = [
         ['label' => __('Profile'), 'href' => route('profile.edit'), 'active' => request()->routeIs('profile.edit')],
         ['label' => __('Security'), 'href' => route('security.edit'), 'active' => request()->routeIs('security.edit')],
-        ['label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*')],
-        ['label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit')],
     ];
+
+    if ($user?->isAdmin()) {
+        $tabs[] = ['label' => __('Teams'), 'href' => route('teams.index'), 'active' => request()->routeIs('teams.*')];
+    }
+
+    $tabs[] = ['label' => __('Appearance'), 'href' => route('appearance.edit'), 'active' => request()->routeIs('appearance.edit')];
 @endphp
 
 <div class="w-full">
@@ -21,13 +26,25 @@
     </div>
 
     <div class="mt-6">
-        <h2 class="text-lg font-semibold tracking-tight">{{ $heading ?? '' }}</h2>
-        @if (($subheading ?? null) !== '')
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <h2 class="text-lg font-semibold tracking-tight">{{ $heading ?? '' }}</h2>
+            @if (auth()->check())
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-muted text-foreground border border-border/70" title="{{ __('Universal Registration Number') }}">
+                    <span class="text-muted-foreground">{{ __('URN:') }}</span>
+                    @if (!empty(auth()->user()->urn))
+                        <span class="font-bold">{{ auth()->user()->urn }}</span>
+                    @else
+                        <span class="text-muted-foreground/70 italic text-[10px]">{{ __('Not Assigned') }}</span>
+                    @endif
+                </span>
+            @endif
+        </div>
+        @if (! empty($subheading))
             <p class="text-sm text-muted-foreground mt-1">{{ $subheading }}</p>
         @endif
 
         <div class="mt-6 w-full max-w-2xl">
-            {{ $slot }}
+            {{ $slot ?? '' }}
         </div>
     </div>
 </div>

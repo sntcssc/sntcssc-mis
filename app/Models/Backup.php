@@ -134,11 +134,20 @@ class Backup extends Model
     }
 
     /**
-     * Get the absolute filesystem path to the backup file.
+     * Get the absolute filesystem path to the backup file (for local disks).
+     * Returns null for remote cloud storage drivers (e.g. S3).
      */
-    public function absolutePath(): string
+    public function absolutePath(): ?string
     {
-        return Storage::disk($this->disk)->path($this->path);
+        if ($this->disk === 's3') {
+            return null;
+        }
+
+        try {
+            return Storage::disk($this->disk)->path($this->path);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

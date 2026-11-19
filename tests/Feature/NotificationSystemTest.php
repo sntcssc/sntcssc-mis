@@ -204,6 +204,8 @@ test('Livewire notification-bell component renders unread badge and handles acti
         ->test('notification-bell')
         ->assertSee('System Maintenance Scheduled')
         ->assertSee('1 unread')
+        ->assertSeeHtml('x-show="drawerOpen"')
+        ->assertDontSeeHtml('x-show="open"')
         ->call('markAsRead', $notification->id)
         ->assertSee('All caught up!')
         ->call('toggleMute')

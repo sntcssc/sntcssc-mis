@@ -252,6 +252,8 @@ test('system settings page renders, saves flags and runs maintenance utilities',
         ->assertHasNoErrors()
         ->call('clearCache')
         ->assertHasNoErrors()
+        ->call('clearViews')
+        ->assertHasNoErrors()
         ->call('linkStorage')
         ->assertHasNoErrors();
 
@@ -259,4 +261,21 @@ test('system settings page renders, saves flags and runs maintenance utilities',
         ->and(Setting::get('system.app_name'))->toBe('SNT CSSC Management Portal')
         ->and((int) Setting::get('system.max_upload_size'))->toBe(25)
         ->and(Setting::get('system.cache_driver'))->toBe('redis');
+});
+
+test('admin can enable and disable user account self-deletion option in system settings', function () {
+    Livewire::test('pages::admin.settings.system')
+        ->assertSee('Allow User Account Self-Deletion')
+        ->set('form.allow_account_deletion', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect((bool) Setting::get('system.allow_account_deletion'))->toBeTrue();
+
+    Livewire::test('pages::admin.settings.system')
+        ->set('form.allow_account_deletion', false)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect((bool) Setting::get('system.allow_account_deletion'))->toBeFalse();
 });

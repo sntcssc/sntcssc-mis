@@ -8,7 +8,6 @@ use App\Models\Role;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RolePermissionExportService
@@ -71,7 +70,7 @@ class RolePermissionExportService
     /**
      * Export roles & permissions matrix to PDF.
      */
-    public static function exportRolesPdf(): Response
+    public static function exportRolesPdf(): StreamedResponse
     {
         $roles = Role::with('permissions')->orderBy('name')->get();
         $permissions = Permission::orderBy('module')->orderBy('name')->get()->groupBy('module');
@@ -85,7 +84,16 @@ class RolePermissionExportService
 
         $pdf->setPaper('A4', 'landscape');
 
-        return $pdf->download($filename);
+        return response()->streamDownload(
+            function () use ($pdf) {
+                echo $pdf->output();
+            },
+            $filename,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            ]
+        );
     }
 
     /**

@@ -117,6 +117,7 @@ class SettingsSeeder extends Seeder
              * ------------------------------------------------------- */
             ['key' => 'system.maintenance_mode', 'value' => false, 'group' => 'system', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Maintenance mode'],
             ['key' => 'system.debug_mode', 'value' => false, 'group' => 'system', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Debug mode'],
+            ['key' => 'system.allow_account_deletion', 'value' => false, 'group' => 'system', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Allow Account Self-Deletion'],
             ['key' => 'system.app_name', 'value' => 'SNT CSSC MIS', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'System app name'],
             ['key' => 'system.app_version', 'value' => '1.0.0', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'App version'],
             ['key' => 'system.developed_by', 'value' => 'SNT CSSC IT Team', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Developed by'],
@@ -126,6 +127,14 @@ class SettingsSeeder extends Seeder
             ['key' => 'system.max_upload_size', 'value' => 10, 'group' => 'system', 'type' => Setting::TYPE_NUMBER, 'label' => 'Max upload size (MB)'],
             ['key' => 'system.session_lifetime', 'value' => 120, 'group' => 'system', 'type' => Setting::TYPE_NUMBER, 'label' => 'Session lifetime (minutes)'],
             ['key' => 'system.cache_driver', 'value' => 'file', 'group' => 'system', 'type' => Setting::TYPE_SELECT, 'label' => 'Cache driver', 'options' => ['file' => 'File', 'redis' => 'Redis', 'database' => 'Database']],
+            ['key' => 'system.min_mobile_version', 'value' => '1.0.0', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Minimum Mobile App Version'],
+            ['key' => 'system.latest_mobile_version', 'value' => '1.2.0', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Latest Mobile App Version'],
+            ['key' => 'system.force_mobile_update', 'value' => false, 'group' => 'system', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Force Mobile App Update'],
+            ['key' => 'system.play_store_url', 'value' => 'https://play.google.com/store/apps/details?id=in.sntcssc.mis', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Google Play Store URL'],
+            ['key' => 'system.app_store_url', 'value' => 'https://apps.apple.com/app/sntcssc-mis/id123456789', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Apple App Store URL'],
+            ['key' => 'system.min_desktop_version', 'value' => '1.0.0', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Minimum Desktop App Version'],
+            ['key' => 'system.latest_desktop_version', 'value' => '1.1.0', 'group' => 'system', 'type' => Setting::TYPE_STRING, 'label' => 'Latest Desktop App Version'],
+            ['key' => 'system.desktop_update_channel', 'value' => 'stable', 'group' => 'system', 'type' => Setting::TYPE_SELECT, 'label' => 'Desktop Update Channel', 'options' => ['stable' => 'Stable', 'beta' => 'Beta', 'nightly' => 'Nightly']],
 
             /* ------------------------------------------------------- *
              *  SMS gateway — 2factor.in
@@ -148,7 +157,7 @@ class SettingsSeeder extends Seeder
              *  Payment gateways — Razorpay / PhonePe
              * ------------------------------------------------------- */
             ['key' => 'payment.enabled', 'value' => false, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable online payments'],
-            ['key' => 'payment.driver', 'value' => 'razorpay', 'group' => 'payment', 'type' => Setting::TYPE_SELECT, 'label' => 'Active payment gateway', 'options' => ['razorpay' => 'Razorpay', 'phonepe' => 'PhonePe']],
+            ['key' => 'payment.driver', 'value' => 'razorpay', 'group' => 'payment', 'type' => Setting::TYPE_SELECT, 'label' => 'Active payment gateway', 'options' => ['razorpay' => 'Razorpay', 'phonepe' => 'PhonePe', 'ccavenue' => 'CCAVenue', 'offline' => 'Offline Only']],
             ['key' => 'payment.currency', 'value' => 'INR', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Currency code'],
             ['key' => 'payment.razorpay_enabled', 'value' => false, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Razorpay enabled'],
             ['key' => 'payment.razorpay_key_id', 'value' => null, 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Razorpay key ID'],
@@ -159,6 +168,23 @@ class SettingsSeeder extends Seeder
             ['key' => 'payment.phonepe_salt_key', 'value' => null, 'group' => 'payment', 'type' => Setting::TYPE_SECRET, 'label' => 'PhonePe salt key'],
             ['key' => 'payment.phonepe_salt_index', 'value' => 1, 'group' => 'payment', 'type' => Setting::TYPE_NUMBER, 'label' => 'PhonePe salt index'],
             ['key' => 'payment.phonepe_mode', 'value' => 'UAT', 'group' => 'payment', 'type' => Setting::TYPE_SELECT, 'label' => 'PhonePe mode', 'options' => ['UAT' => 'UAT (test)', 'LIVE' => 'Live']],
+            ['key' => 'payment.ccavenue_enabled', 'value' => false, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'CCAVenue enabled'],
+            ['key' => 'payment.ccavenue_merchant_id', 'value' => null, 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'CCAVenue Merchant ID'],
+            ['key' => 'payment.ccavenue_access_code', 'value' => null, 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'CCAVenue Access Code'],
+            ['key' => 'payment.ccavenue_working_key', 'value' => null, 'group' => 'payment', 'type' => Setting::TYPE_SECRET, 'label' => 'CCAVenue Working Key'],
+            ['key' => 'payment.ccavenue_mode', 'value' => 'test', 'group' => 'payment', 'type' => Setting::TYPE_SELECT, 'label' => 'CCAVenue mode', 'options' => ['test' => 'Test (Sandbox)', 'live' => 'Live (Production)']],
+            ['key' => 'payment.offline_enabled', 'value' => true, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable offline payment fallback'],
+            ['key' => 'payment.offline_bank_transfer_enabled', 'value' => true, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Bank Transfer/NEFT/IMPS enabled'],
+            ['key' => 'payment.offline_bank_name', 'value' => 'State Bank of India', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Bank Name'],
+            ['key' => 'payment.offline_account_name', 'value' => 'Satyendranath Tagore Civil Services Study Centre', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Account Name'],
+            ['key' => 'payment.offline_account_number', 'value' => '39824589201', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Account Number'],
+            ['key' => 'payment.offline_ifsc_code', 'value' => 'SBIN0000123', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'IFSC Code'],
+            ['key' => 'payment.offline_branch', 'value' => 'Kolkata Main Branch', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'Branch Name'],
+            ['key' => 'payment.offline_upi_enabled', 'value' => true, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Static UPI QR enabled'],
+            ['key' => 'payment.offline_upi_id', 'value' => 'sntcssc@indianbk', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'UPI VPA Address'],
+            ['key' => 'payment.offline_upi_payee_name', 'value' => 'SNTCSSC Kolkata', 'group' => 'payment', 'type' => Setting::TYPE_STRING, 'label' => 'UPI Payee Name'],
+            ['key' => 'payment.offline_cash_enabled', 'value' => true, 'group' => 'payment', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'In-Person Cash Payment enabled'],
+            ['key' => 'payment.offline_cash_instructions', 'value' => 'Pay cash directly at Accounts Counter, Room 102, Administrative Block between 10:00 AM and 4:00 PM on working days and collect official signed receipt.', 'group' => 'payment', 'type' => Setting::TYPE_TEXT, 'label' => 'Cash in-person instructions'],
 
             /* ------------------------------------------------------- *
              *  Email — SMTP / log mailer
@@ -199,6 +225,73 @@ class SettingsSeeder extends Seeder
             ['key' => 'chat.notify_whatsapp', 'value' => false, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send WhatsApp Alerts on Chat'],
             ['key' => 'chat.notify_telegram', 'value' => false, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Send Telegram Alerts on Chat'],
             ['key' => 'chat.sound_enabled', 'value' => true, 'group' => 'chat', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Play Chat Message Chimes'],
+
+            /* ------------------------------------------------------- *
+             *  Library Management & Policies
+             * ------------------------------------------------------- */
+            ['key' => 'library.fines_enabled', 'value' => true, 'group' => 'library', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Overdue Fine & Penalty System'],
+            ['key' => 'library.fine_per_day', 'value' => 5.00, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Overdue Fine Rate Per Day (INR)'],
+            ['key' => 'library.default_loan_days', 'value' => 15, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Default Book Loan Duration (Days)'],
+            ['key' => 'library.max_books_allowed', 'value' => 3, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Maximum Books Allowed Per Member'],
+            ['key' => 'library.max_renewals', 'value' => 2, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Maximum Allowed Book Renewals'],
+            ['key' => 'library.require_security_deposit', 'value' => true, 'group' => 'library', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Require Library Security Deposit for Borrowing'],
+            ['key' => 'library.allow_deposit_bypass', 'value' => true, 'group' => 'library', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Allow Librarian / Staff Security Deposit Bypass'],
+            ['key' => 'library.reservation_expiry_days', 'value' => 3, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Book Reservation Pickup Hold Window (Days)'],
+            ['key' => 'library.reminder_days_before', 'value' => 2, 'group' => 'library', 'type' => Setting::TYPE_NUMBER, 'label' => 'Days Before Due Date to Dispatch Return Reminder'],
+            ['key' => 'library.auto_reminders_enabled', 'value' => true, 'group' => 'library', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Automated Scheduled Return Reminders'],
+            ['key' => 'library.reminder_channels', 'value' => json_encode(['database', 'email', 'sms']), 'group' => 'library', 'type' => Setting::TYPE_JSON, 'label' => 'Active Reminder Channels'],
+
+            /* ------------------------------------------------------- *
+             *  reCAPTCHA & Bot Defense
+             * ------------------------------------------------------- */
+            ['key' => 'captcha.enabled', 'value' => false, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable CAPTCHA Protection'],
+            ['key' => 'captcha.driver', 'value' => 'custom', 'group' => 'captcha', 'type' => Setting::TYPE_SELECT, 'label' => 'Active CAPTCHA Driver', 'options' => ['google' => 'Google reCAPTCHA', 'custom' => 'Custom CAPTCHA Service']],
+            ['key' => 'captcha.on_login', 'value' => true, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Protect Login Form'],
+            ['key' => 'captcha.on_register', 'value' => true, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Protect Registration Form'],
+            ['key' => 'captcha.on_forgot_password', 'value' => true, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Protect Password Reset Form'],
+            ['key' => 'captcha.on_contact', 'value' => true, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Protect Public Contact Form'],
+            ['key' => 'captcha.google_version', 'value' => 'v2_checkbox', 'group' => 'captcha', 'type' => Setting::TYPE_SELECT, 'label' => 'Google reCAPTCHA Version', 'options' => ['v2_checkbox' => 'reCAPTCHA v2 (Checkbox)', 'v2_invisible' => 'reCAPTCHA v2 (Invisible)', 'v3' => 'reCAPTCHA v3 (Score-based)']],
+            ['key' => 'captcha.google_site_key', 'value' => null, 'group' => 'captcha', 'type' => Setting::TYPE_STRING, 'label' => 'Google reCAPTCHA Site Key'],
+            ['key' => 'captcha.google_secret_key', 'value' => null, 'group' => 'captcha', 'type' => Setting::TYPE_SECRET, 'label' => 'Google reCAPTCHA Secret Key'],
+            ['key' => 'captcha.google_score_threshold', 'value' => 0.5, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Google reCAPTCHA v3 Score Threshold'],
+            ['key' => 'captcha.google_domain', 'value' => 'www.google.com', 'group' => 'captcha', 'type' => Setting::TYPE_SELECT, 'label' => 'Google reCAPTCHA Domain Endpoint', 'options' => ['www.google.com' => 'google.com (Default)', 'www.recaptcha.net' => 'recaptcha.net (China/Global CDN)']],
+            ['key' => 'captcha.custom_char_type', 'value' => 'alphanumeric', 'group' => 'captcha', 'type' => Setting::TYPE_SELECT, 'label' => 'Custom CAPTCHA Character Mode', 'options' => ['numbers' => 'Numbers Only (0-9)', 'alphabets' => 'Alphabets Only (A-Z, a-z)', 'alphanumeric' => 'Numbers & Alphabets (Mix)', 'special_characters' => 'Alphanumeric & Special Characters (@#$%)', 'math' => 'Mathematical Problem (e.g. 7 + 5)']],
+            ['key' => 'captcha.custom_length', 'value' => 5, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Custom CAPTCHA Length'],
+            ['key' => 'captcha.custom_case_sensitive', 'value' => false, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Custom CAPTCHA Case Sensitive'],
+            ['key' => 'captcha.custom_noise_lines', 'value' => 3, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Custom CAPTCHA Noise Lines'],
+            ['key' => 'captcha.custom_noise_dots', 'value' => 35, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Custom CAPTCHA Noise Dots'],
+            ['key' => 'captcha.custom_distortion', 'value' => true, 'group' => 'captcha', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Custom CAPTCHA Text Distortion'],
+            ['key' => 'captcha.custom_expire_minutes', 'value' => 5, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Custom CAPTCHA Expiry (Minutes)'],
+            ['key' => 'captcha.custom_max_attempts', 'value' => 3, 'group' => 'captcha', 'type' => Setting::TYPE_NUMBER, 'label' => 'Custom CAPTCHA Max Failed Attempts'],
+
+            // Storage & Cloud (S3) Settings
+            ['key' => 'storage.default_disk', 'value' => 'public', 'group' => 'storage', 'type' => Setting::TYPE_SELECT, 'label' => 'Default Storage Disk', 'options' => ['public' => 'Local Public Disk', 's3' => 'Amazon S3 / S3-Compatible Cloud Storage', 'local' => 'Local Private Disk']],
+            ['key' => 'storage.provider', 'value' => 'aws', 'group' => 'storage', 'type' => Setting::TYPE_SELECT, 'label' => 'Cloud Storage Provider', 'options' => ['aws' => 'Amazon Web Services (AWS S3)', 'r2' => 'Cloudflare R2', 'minio' => 'MinIO (Self-Hosted S3)', 'wasabi' => 'Wasabi Hot Cloud Storage', 'do_spaces' => 'DigitalOcean Spaces', 'backblaze' => 'Backblaze B2', 'custom' => 'Custom S3-Compatible Storage']],
+            ['key' => 'storage.s3_key', 'value' => null, 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'Access Key ID'],
+            ['key' => 'storage.s3_secret', 'value' => null, 'group' => 'storage', 'type' => Setting::TYPE_SECRET, 'label' => 'Secret Access Key'],
+            ['key' => 'storage.s3_region', 'value' => 'us-east-1', 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'AWS Region / Datacenter'],
+            ['key' => 'storage.s3_bucket', 'value' => null, 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'Bucket Name'],
+            ['key' => 'storage.s3_endpoint', 'value' => null, 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'Custom Endpoint URL (MinIO / R2 / Wasabi / DO Spaces)'],
+            ['key' => 'storage.s3_url', 'value' => null, 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'Custom Public / CDN Domain URL'],
+            ['key' => 'storage.s3_use_path_style_endpoint', 'value' => false, 'group' => 'storage', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Use Path-Style Endpoint (Required for MinIO)'],
+            ['key' => 'storage.s3_visibility', 'value' => 'public', 'group' => 'storage', 'type' => Setting::TYPE_SELECT, 'label' => 'Default Upload Visibility', 'options' => ['public' => 'Public Read', 'private' => 'Private (Signed URLs)']],
+            ['key' => 'storage.max_upload_size_mb', 'value' => 25, 'group' => 'storage', 'type' => Setting::TYPE_NUMBER, 'label' => 'Max Upload Size (MB)'],
+            ['key' => 'storage.allowed_file_types', 'value' => 'pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,webp,svg,zip,mp4', 'group' => 'storage', 'type' => Setting::TYPE_STRING, 'label' => 'Allowed File Extensions'],
+            ['key' => 'storage.auto_backup_to_s3', 'value' => false, 'group' => 'storage', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Save System Backups to S3 Cloud'],
+
+            /* ------------------------------------------------------- *
+             *  Admission Portal (OTR) API & Integration Gateway
+             * ------------------------------------------------------- */
+            ['key' => 'otr.enabled', 'value' => true, 'group' => 'otr', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Admission OTR Integration Feature'],
+            ['key' => 'otr.base_url', 'value' => 'http://127.0.0.1:8080', 'group' => 'otr', 'type' => Setting::TYPE_STRING, 'label' => 'Admission OTR Portal Base URL'],
+            ['key' => 'otr.api_key', 'value' => 'adm_live_Xxe1CHL3XgkwWUnSAWSnohpbSl7B5wnhMqOjc5Gi', 'group' => 'otr', 'type' => Setting::TYPE_SECRET, 'label' => 'Admission OTR API Key'],
+            ['key' => 'otr.timeout', 'value' => 10, 'group' => 'otr', 'type' => Setting::TYPE_NUMBER, 'label' => 'Connection Request Timeout (Seconds)'],
+            ['key' => 'otr.auto_sync_enabled', 'value' => false, 'group' => 'otr', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Enable Automated Scheduled Sync'],
+            ['key' => 'otr.auto_sync_frequency', 'value' => 'daily', 'group' => 'otr', 'type' => Setting::TYPE_SELECT, 'label' => 'Automated Sync Frequency', 'options' => ['hourly' => 'Hourly', 'daily' => 'Daily', 'weekly' => 'Weekly']],
+            ['key' => 'otr.default_course_id', 'value' => 1, 'group' => 'otr', 'type' => Setting::TYPE_NUMBER, 'label' => 'Default Academic Course for Imports'],
+            ['key' => 'otr.default_batch_id', 'value' => 1, 'group' => 'otr', 'type' => Setting::TYPE_NUMBER, 'label' => 'Default Academic Batch for Imports'],
+            ['key' => 'otr.download_documents', 'value' => false, 'group' => 'otr', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Download and Store Document Files to MIS Storage'],
+            ['key' => 'otr.update_existing_profiles', 'value' => true, 'group' => 'otr', 'type' => Setting::TYPE_BOOLEAN, 'label' => 'Update Student Dossier If Candidate Already Exists'],
         ];
     }
 }

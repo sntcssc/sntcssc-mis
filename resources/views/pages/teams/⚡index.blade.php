@@ -15,8 +15,17 @@ use Livewire\Component;
 new #[Title('Teams')] class extends Component {
     public string $name = '';
 
+    public function mount(): void
+    {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+        Gate::authorize('viewAny', Team::class);
+    }
+
     public function createTeam(CreateTeam $createTeam): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+        Gate::authorize('create', Team::class);
+
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255', new TeamName],
         ]);
@@ -34,6 +43,8 @@ new #[Title('Teams')] class extends Component {
 
     public function leaveTeam(int $teamId): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+
         $team = Team::findOrFail($teamId);
         $user = Auth::user();
 
@@ -64,6 +75,10 @@ new #[Title('Teams')] class extends Component {
     #[Computed]
     public function teams(): Collection
     {
+        if (! Auth::user()?->isAdmin()) {
+            return collect();
+        }
+
         return Auth::user()->toUserTeams(includeCurrent: true);
     }
 }; ?>

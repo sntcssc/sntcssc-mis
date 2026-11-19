@@ -13,6 +13,8 @@ Schedule::call(function () {
         ->delete();
 })->daily();
 
+Schedule::command('payments:sync-ccavenue-pending')->everyThirtyMinutes()->withoutOverlapping();
+
 try {
     if (Schema::hasTable('cron_jobs')) {
         $jobs = CronJob::active()->get();

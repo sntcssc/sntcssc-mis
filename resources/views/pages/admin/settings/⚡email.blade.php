@@ -169,6 +169,8 @@ new #[Layout('layouts.app')] #[Title('Email Provider Settings')] class extends C
                     <h2 class="text-sm font-semibold">{{ __('Mail Transport & Driver') }}</h2>
                     <p class="text-[11px] text-muted-foreground">{{ __('Select your primary email delivery service.') }}</p>
                 </div>
+            </div>
+
             <div class="p-3.5 rounded-lg border border-border bg-secondary/15">
                 <x-ui.switch
                     wire:model="form.is_enabled"

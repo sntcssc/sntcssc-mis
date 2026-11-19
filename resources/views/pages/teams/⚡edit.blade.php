@@ -31,6 +31,9 @@ new class extends Component
 
     public function mount(Team $team): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+        Gate::authorize('view', $team);
+
         $this->teamModel = $team;
         $this->teamName = $team->name;
 
@@ -39,6 +42,7 @@ new class extends Component
 
     public function updateTeam(): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         Gate::authorize('update', $this->teamModel);
 
         $validated = $this->validate([
@@ -64,6 +68,7 @@ new class extends Component
 
     public function updateMember(int $userId, string $role): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         Gate::authorize('updateMember', $this->teamModel);
 
         $validated = Validator::make(['role' => $role], [

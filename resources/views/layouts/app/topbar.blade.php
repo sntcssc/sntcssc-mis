@@ -1,5 +1,7 @@
 @php
     $user = auth()->user();
+    $viewportPreferences = \App\Services\GlobalSearchService::getViewportPreferences($user);
+    $defaultFullscreen = $viewportPreferences['effective_fullscreen'] ?? 'normal';
 
     $breadcrumbs = collect();
 
@@ -69,20 +71,35 @@
     </div>
 
     <div class="flex items-center gap-1 sm:gap-2">
-        {{-- Search --}}
+        {{-- Mobile Search Trigger --}}
         <button
             type="button"
-            class="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-2.5 sm:px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary transition-colors h-9 cursor-pointer"
+            x-on:click="$dispatch('open-global-search')"
+            class="flex sm:hidden h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            aria-label="{{ __('Search admin panel') }}"
+            title="{{ __('Search admin panel (Ctrl+K)') }}"
+        >
+            <x-icon name="search" class="h-4 w-4"/>
+        </button>
+
+        {{-- Desktop/Tablet Global Search Trigger --}}
+        <button
+            type="button"
+            x-on:click="$dispatch('open-global-search')"
+            class="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-2.5 sm:px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors h-9 cursor-pointer"
+            title="{{ __('Search admin panel (Ctrl+K)') }}"
         >
             <x-icon name="search" class="h-3.5 w-3.5 shrink-0"/>
-            <span class="hidden md:inline">{{ __('Search students, courses…') }}</span>
+            <span class="hidden md:inline">{{ __('Search…') }}</span>
             <kbd class="hidden lg:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
                 {{ __('Ctrl') }} K
             </kbd>
         </button>
 
-        {{-- Team switcher (replaces the template's store selector) --}}
-        <livewire:team-switcher/>
+        {{-- Team switcher (replaces the template's store selector - accessible only to administrators) --}}
+        @if ($user?->isAdmin())
+            <livewire:team-switcher/>
+        @endif
 
         {{-- Language switcher --}}
         <x-locale-switcher/>
@@ -90,23 +107,143 @@
         {{-- Theme switcher: light / dark / system --}}
         <x-ui.theme-switch/>
 
-        {{-- Live Chat Quick Access Button with Unread Badge --}}
-        @php
-            $unreadChat = $user ? $user->unreadChatMessagesCount() : 0;
-        @endphp
-        <a
-            href="{{ route('admin.chat.index') }}"
-            wire:navigate
-            class="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            title="{{ __('Live Chat & Calls') }}"
+        {{-- Fullscreen Mode Toggle & Auto-Fullscreen Engine --}}
+        <div
+            x-data="{
+                isFullscreen: false,
+                configDefault: @js($defaultFullscreen),
+
+                init() {
+                    this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+
+                    const syncState = () => {
+                        this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+                    };
+
+                    document.addEventListener('fullscreenchange', syncState);
+                    document.addEventListener('webkitfullscreenchange', syncState);
+                    document.addEventListener('mozfullscreenchange', syncState);
+                    document.addEventListener('MSFullscreenChange', syncState);
+
+                    // Global custom event listener
+                    window.addEventListener('toggle-admin-fullscreen', () => {
+                        this.toggle();
+                    });
+
+                    // Check if default fullscreen is enabled in config or user preference
+                    const userSavedPref = localStorage.getItem('admin_default_fullscreen');
+                    const shouldAutoFullscreen = userSavedPref === 'fullscreen' || (userSavedPref === null && this.configDefault === 'fullscreen');
+
+                    if (shouldAutoFullscreen && !this.isFullscreen) {
+                        this.requestAutoFullscreen();
+                    }
+                },
+
+                toggle() {
+                    if (!this.isFullscreen) {
+                        this.enter();
+                    } else {
+                        this.exit();
+                    }
+                },
+
+                enter() {
+                    const el = document.documentElement;
+                    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+                    if (rfs) {
+                        rfs.call(el).then(() => {
+                            this.isFullscreen = true;
+                        }).catch(err => {
+                            console.warn('Fullscreen entry prevented:', err);
+                        });
+                    }
+                },
+
+                exit() {
+                    const efs = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+                    if (efs && (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement)) {
+                        efs.call(document).then(() => {
+                            this.isFullscreen = false;
+                        }).catch(err => {
+                            console.warn('Fullscreen exit prevented:', err);
+                        });
+                    }
+                },
+
+                requestAutoFullscreen() {
+                    const el = document.documentElement;
+                    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+                    if (rfs) {
+                        try {
+                            const promise = rfs.call(el);
+                            if (promise && promise.catch) {
+                                promise.catch(() => {
+                                    const onUserGesture = () => {
+                                        if (!this.isFullscreen) {
+                                            this.enter();
+                                        }
+                                        window.removeEventListener('click', onUserGesture);
+                                        window.removeEventListener('keydown', onUserGesture);
+                                    };
+                                    window.addEventListener('click', onUserGesture, { once: true });
+                                    window.addEventListener('keydown', onUserGesture, { once: true });
+                                });
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }"
+            class="flex items-center"
         >
-            <x-icon name="message-square" class="h-4 w-4" />
-            @if ($unreadChat > 0)
-                <span class="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow-xs animate-pulse">
-                    {{ $unreadChat > 99 ? '99+' : $unreadChat }}
-                </span>
-            @endif
-        </a>
+            <button
+                type="button"
+                x-on:click="toggle()"
+                class="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                :title="isFullscreen ? '{{ __('Exit Full Screen (Esc / F11)') }}' : '{{ __('Toggle Full Screen (F11)') }}'"
+                :aria-label="isFullscreen ? '{{ __('Exit Full Screen') }}' : '{{ __('Enter Full Screen') }}'"
+            >
+                <template x-if="!isFullscreen">
+                    <x-icon name="maximize-2" class="h-4 w-4 text-foreground/80"/>
+                </template>
+                <template x-if="isFullscreen">
+                    <x-icon name="minimize-2" class="h-4 w-4 text-primary"/>
+                </template>
+            </button>
+        </div>
+
+        {{-- Live Chat & Online Meetings Quick Access Buttons --}}
+        @php
+            $chatEnabled = (bool) \App\Models\Setting::get('chat.enabled', true);
+            $hasChatAccess = $chatEnabled && $user && ($user->can('chat.access') || $user->hasRole('Super Administrator'));
+            $unreadChat = ($hasChatAccess && $user) ? $user->unreadChatMessagesCount() : 0;
+            $meetingsEnabled = (bool) \App\Models\Setting::get('meeting.enabled', \App\Models\Setting::get('chat.meetings_enabled', true));
+            $hasMeetingsAccess = $meetingsEnabled && $user && ($user->can('meetings.view') || $user->hasRole('Super Administrator'));
+        @endphp
+        @if ($hasChatAccess)
+            <a
+                href="{{ route('admin.chat.index') }}"
+                wire:navigate
+                class="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                title="{{ __('Live Chat & Calls') }}"
+            >
+                <x-icon name="message-square" class="h-4 w-4" />
+                @if ($unreadChat > 0)
+                    <span class="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow-xs animate-pulse">
+                        {{ $unreadChat > 99 ? '99+' : $unreadChat }}
+                    </span>
+                @endif
+            </a>
+        @endif
+        @if ($hasMeetingsAccess)
+            <a
+                href="{{ route('meetings.index') }}"
+                wire:navigate
+                class="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                title="{{ __('Online Meetings') }}"
+            >
+                <x-icon name="video" class="h-4 w-4" />
+            </a>
+        @endif
 
         {{-- Realtime Interactive Notifications Bell & Drawer --}}
         <livewire:notification-bell />

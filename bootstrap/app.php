@@ -1,10 +1,15 @@
 <?php
 
+use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\CheckMaintenanceMode;
 use App\Http\Middleware\EnsurePhoneAndEmailVerified;
+use App\Http\Middleware\EnsureStudentProfileComplete;
+use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\RequireApiScope;
 use App\Http\Middleware\SetAppLocale;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use App\Http\Middleware\TrimStrings as AppTrimStrings;
+use App\Http\Middleware\ValidateCaptchaMiddleware;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -32,14 +37,22 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'admin' => EnsureUserIsAdmin::class,
             'verified' => EnsurePhoneAndEmailVerified::class,
+            'student.profile.complete' => EnsureStudentProfileComplete::class,
+            'auth.api_key' => AuthenticateApiKey::class,
+            'api.scope' => RequireApiScope::class,
+            'captcha' => ValidateCaptchaMiddleware::class,
         ]);
 
         // Meeting sync polling is a JSON XHR authenticated via session + controller guard.
         // Signal POSTs keep CSRF protection: the client always sends the X-CSRF-TOKEN header.
+        // Payment gateway callbacks (e.g. CCAvenue) come directly from external gateway servers.
         $middleware->validateCsrfTokens(except: [
             'meetings/*/sync',
             '*/meetings/*/sync',
+            'payments/ccavenue/*',
+            'api/v1/payments/ccavenue/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -83,6 +83,16 @@ class CronJobSeeder extends Seeder
                 'run_in_background' => true,
                 'without_overlapping' => true,
             ],
+            [
+                'name' => 'Automated Library Loan Return Reminders',
+                'command' => 'library:send-reminders',
+                'arguments' => null,
+                'expression' => '0 9 * * *',
+                'description' => 'Scans due soon and overdue library book loans and sends multi-channel reminders to borrowers.',
+                'is_active' => true,
+                'run_in_background' => true,
+                'without_overlapping' => true,
+            ],
         ];
 
         foreach ($defaultJobs as $job) {

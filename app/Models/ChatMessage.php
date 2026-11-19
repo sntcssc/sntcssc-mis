@@ -90,6 +90,11 @@ class ChatMessage extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function sender(): BelongsTo
+    {
+        return $this->user();
+    }
+
     public function pinnedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'pinned_by');

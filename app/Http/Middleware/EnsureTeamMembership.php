@@ -20,12 +20,23 @@ class EnsureTeamMembership
     {
         [$user, $team] = [$request->user(), $this->team($request)];
 
-        abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
+        abort_if(! $user || ! $team || (! $user->belongsToTeam($team) && ! $user->hasRole('Super Administrator')), 403);
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 
         if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
             $user->switchTeam($team);
+        }
+
+        $routeParam = $request->route('current_team');
+        if (($routeParam === 'super-admins-team' || is_numeric($routeParam)) && $team && $team->slug !== (string) $routeParam) {
+            $parameters = $request->route()->parameters();
+            unset($parameters['view'], $parameters['status']);
+            $parameters['current_team'] = $team->slug;
+            $routeName = $request->route()->getName();
+            if ($routeName) {
+                return redirect()->route($routeName, $parameters);
+            }
         }
 
         return $next($request);
@@ -36,7 +47,7 @@ class EnsureTeamMembership
      */
     protected function ensureTeamMemberHasRequiredRole(User $user, Team $team, ?string $minimumRole): void
     {
-        if ($minimumRole === null) {
+        if ($minimumRole === null || $user->hasRole('Super Administrator')) {
             return;
         }
 
@@ -59,10 +70,17 @@ class EnsureTeamMembership
     {
         $team = $request->route('current_team') ?? $request->route('team');
 
-        if (is_string($team)) {
-            $team = Team::where('slug', $team)->first();
+        if ($team instanceof Team) {
+            return $team;
         }
 
-        return $team;
+        if (is_string($team) || is_numeric($team)) {
+            return Team::where('slug', (string) $team)
+                ->when($team === 'super-admins-team', fn ($q) => $q->orWhere('slug', 'sntcssc'))
+                ->when(is_numeric($team), fn ($q) => $q->orWhere('id', (int) $team))
+                ->first();
+        }
+
+        return null;
     }
 }

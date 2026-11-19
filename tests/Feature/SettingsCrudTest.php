@@ -15,6 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
+    Setting::truncate();
     Setting::flushCache();
 });
 

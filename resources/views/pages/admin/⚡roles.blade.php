@@ -329,7 +329,7 @@ new #[Layout('layouts.app')] #[Title('Roles & Permissions Management')] class ex
         return RolePermissionExportService::exportRolesCsv();
     }
 
-    public function exportPdf(): Response
+    public function exportPdf(): StreamedResponse
     {
         return RolePermissionExportService::exportRolesPdf();
     }

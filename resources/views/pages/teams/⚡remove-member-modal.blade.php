@@ -22,6 +22,7 @@ new class extends Component {
         ?string $modalName = null,
     ): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         $this->team = $team;
         $this->memberId = $memberId;
         $this->memberName = $memberName ?? '';
@@ -30,6 +31,7 @@ new class extends Component {
 
     public function removeMember(): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         Gate::authorize('removeMember', $this->team);
 
         $user = User::findOrFail($this->memberId);

@@ -191,6 +191,10 @@ class NullEcho {
 // Global Reconnect helper
 window.reconnectWebSocket = function () {
     if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
+        if (window.WebSocketState && !window.WebSocketState.isConfigured) {
+            console.info('WebSocket connection is currently disabled in system settings (pure polling mode).');
+            return;
+        }
         try {
             updateWebSocketState({ status: 'connecting' });
             window.Echo.connector.pusher.connect();
@@ -200,7 +204,7 @@ window.reconnectWebSocket = function () {
     }
 };
 
-// Broadcaster resolution (Reverb vs Pusher)
+// Broadcaster resolution (Reverb vs Pusher vs Polling/Null)
 // Checks DOM meta tags injected by server first, then falls back to Vite env variables
 const getMetaContent = (name) => {
     if (typeof document === 'undefined') return '';
@@ -208,6 +212,8 @@ const getMetaContent = (name) => {
 };
 
 const serverDriver = getMetaContent('broadcast-driver');
+const metaWebsocketEnabled = getMetaContent('websocket-enabled');
+const chatTransportDriver = getMetaContent('chat-transport-driver');
 const metaReverbKey = getMetaContent('reverb-key');
 const metaPusherKey = getMetaContent('pusher-key');
 
@@ -215,10 +221,20 @@ const viteDriver = import.meta.env.VITE_BROADCASTER;
 const viteReverbKey = import.meta.env.VITE_REVERB_APP_KEY;
 const vitePusherKey = import.meta.env.VITE_PUSHER_APP_KEY;
 
-// Determine driver: 'pusher' or 'reverb'
+// Check if WebSockets are explicitly disabled by system settings, polling mode, or null/log driver
+const isExplicitlyDisabled =
+    metaWebsocketEnabled === 'false' ||
+    metaWebsocketEnabled === '0' ||
+    chatTransportDriver === 'polling' ||
+    serverDriver === 'null' ||
+    serverDriver === 'log' ||
+    serverDriver === 'none' ||
+    serverDriver === 'polling';
+
 let activeDriver = (serverDriver || viteDriver || '').toLowerCase();
 
-if (!activeDriver || activeDriver === 'null' || activeDriver === 'log') {
+// Only auto-resolve driver if not explicitly disabled
+if (!isExplicitlyDisabled && !activeDriver) {
     if (metaPusherKey || (vitePusherKey && !viteReverbKey)) {
         activeDriver = 'pusher';
     } else if (metaReverbKey || viteReverbKey) {
@@ -226,11 +242,17 @@ if (!activeDriver || activeDriver === 'null' || activeDriver === 'log') {
     }
 }
 
-const reverbKey = metaReverbKey || viteReverbKey || '';
-const pusherKey = metaPusherKey || vitePusherKey || '';
+// Force null driver when explicitly disabled
+if (isExplicitlyDisabled) {
+    activeDriver = 'null';
+}
 
-const isPusher = activeDriver === 'pusher' && pusherKey !== '';
-const isReverb = (activeDriver === 'reverb' || (!isPusher && reverbKey !== '')) && reverbKey !== '';
+// Ensure keys are strictly empty when disabled or not in use
+const reverbKey = isExplicitlyDisabled ? '' : (metaReverbKey || (!serverDriver && activeDriver === 'reverb' ? viteReverbKey : '') || '');
+const pusherKey = isExplicitlyDisabled ? '' : (metaPusherKey || (!serverDriver && activeDriver === 'pusher' ? vitePusherKey : '') || '');
+
+const isPusher = !isExplicitlyDisabled && activeDriver === 'pusher' && pusherKey !== '';
+const isReverb = !isExplicitlyDisabled && activeDriver === 'reverb' && reverbKey !== '';
 const csrfToken = (typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') : '') || '';
 
 if (isPusher) {
@@ -316,7 +338,12 @@ if (isPusher) {
     }
 } else {
     // Provide safe NullEcho when running in pure polling mode or without WebSocket keys
-    fallbackToNullEcho('WebSocket keys not configured in environment or driver set to null.');
+    const reason = chatTransportDriver === 'polling'
+        ? 'WebSocket disabled because Chat Realtime Driver is set to polling.'
+        : (isExplicitlyDisabled
+            ? 'WebSocket disabled by system settings or broadcasting driver is null.'
+            : 'WebSocket keys not configured in environment or driver set to null.');
+    fallbackToNullEcho(reason);
 }
 
 function fallbackToNullEcho(errorReason) {

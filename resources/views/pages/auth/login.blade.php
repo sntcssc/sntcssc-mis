@@ -6,110 +6,7 @@
 <x-layouts::auth :title="__('Log in')">
     <div
         class="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-sm"
-        x-data="{
-            loginMethod: 'password', // 'password' or 'otp'
-            otpChannel: '{{ $emailEnabled ? 'email' : 'mobile' }}', // 'email' or 'mobile'
-            identifier: '',
-            otpCode: '',
-            remember: false,
-            step: 'request', // 'request' or 'verify'
-            loading: false,
-            countdown: 0,
-            timer: null,
-            statusMessage: '',
-            errorMessage: '',
-            plainOtp: '',
-
-            startCountdown(seconds = 60) {
-                this.countdown = seconds;
-                if (this.timer) clearInterval(this.timer);
-                this.timer = setInterval(() => {
-                    if (this.countdown > 0) {
-                        this.countdown--;
-                    } else {
-                        clearInterval(this.timer);
-                    }
-                }, 1000);
-            },
-
-            async sendOtp() {
-                if (! this.identifier) {
-                    this.errorMessage = '{{ __('Please enter your email or mobile number.') }}';
-                    return;
-                }
-
-                this.loading = true;
-                this.errorMessage = '';
-                this.statusMessage = '';
-
-                try {
-                    const response = await fetch('{{ route('login.otp.send') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        },
-                        body: JSON.stringify({
-                            identifier: this.identifier
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (! response.ok) {
-                        this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Failed to send OTP.') }}');
-                    } else {
-                        this.step = 'verify';
-                        this.statusMessage = data.message;
-                        this.plainOtp = data.plain_code || '';
-                        this.startCountdown(data.cooldown_seconds || 60);
-                    }
-                } catch (e) {
-                    this.errorMessage = '{{ __('Network error. Please try again.') }}';
-                } finally {
-                    this.loading = false;
-                }
-            },
-
-            async verifyOtp() {
-                if (! this.otpCode || this.otpCode.length < 4) {
-                    this.errorMessage = '{{ __('Please enter the verification code.') }}';
-                    return;
-                }
-
-                this.loading = true;
-                this.errorMessage = '';
-
-                try {
-                    const response = await fetch('{{ route('login.otp.verify') }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        },
-                        body: JSON.stringify({
-                            identifier: this.identifier,
-                            code: this.otpCode,
-                            remember: this.remember
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (! response.ok) {
-                        this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Verification failed.') }}');
-                    } else {
-                        window.location.href = data.redirect_url || '{{ route('home') }}';
-                    }
-                } catch (e) {
-                    this.errorMessage = '{{ __('Network error. Please try again.') }}';
-                } finally {
-                    this.loading = false;
-                }
-            }
-        }"
+        x-data="loginAuthHandler()"
     >
         <div class="flex flex-col items-center mb-6">
             <a href="{{ route('home') }}" wire:navigate class="mb-3 transition-opacity hover:opacity-90">
@@ -125,7 +22,7 @@
             <div class="flex gap-1 p-1 bg-secondary/50 rounded-lg mt-6 w-full">
                 <button
                     type="button"
-                    x-on:click="loginMethod = 'password'; errorMessage = ''; statusMessage = ''"
+                    x-on:click="loginMethod = 'password'; errorMessage = ''; statusMessage = ''; $nextTick(() => window.initRecaptchaOnDemand?.())"
                     class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer"
                     :class="loginMethod === 'password' ? 'bg-card text-foreground shadow-sm font-semibold' : 'text-muted-foreground hover:text-foreground'"
                 >
@@ -134,7 +31,7 @@
                 </button>
                 <button
                     type="button"
-                    x-on:click="loginMethod = 'otp'; errorMessage = ''; statusMessage = ''"
+                    x-on:click="loginMethod = 'otp'; errorMessage = ''; statusMessage = ''; $nextTick(() => window.initRecaptchaOnDemand?.())"
                     class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer"
                     :class="loginMethod === 'otp' ? 'bg-card text-foreground shadow-sm font-semibold' : 'text-muted-foreground hover:text-foreground'"
                 >
@@ -192,8 +89,14 @@
                 </div>
 
                 <div class="flex items-center justify-between">
-                    <x-ui.checkbox name="remember" :label="__('Remember me')" @checked(old('remember'))/>
+                    <x-ui.checkbox name="remember" :label="__('Remember me')" :checked="(bool) old('remember')"/>
                 </div>
+
+                <x-captcha action="login" />
+
+                @if ($errors->has('captcha'))
+                    <p class="text-xs text-rose-500 font-medium">{{ $errors->first('captcha') }}</p>
+                @endif
 
                 <x-ui.button type="submit" class="w-full h-[46px] rounded-lg text-sm font-semibold" data-test="login-button">
                     {{ __('Sign in') }}
@@ -259,6 +162,10 @@
                     </label>
                 </div>
 
+                <div id="otp-captcha-container" class="space-y-1" x-on:keydown.enter.prevent="sendOtp()">
+                    <x-captcha action="login" :options="['input_name' => 'otp_captcha_answer', 'token_name' => 'otp_captcha_token']" />
+                </div>
+
                 <button
                     type="button"
                     x-on:click="sendOtp()"
@@ -280,7 +187,7 @@
                     <p class="text-sm font-semibold text-foreground mt-0.5" x-text="identifier"></p>
                     <button
                         type="button"
-                        x-on:click="step = 'request'; errorMessage = ''; statusMessage = ''"
+                        x-on:click="step = 'request'; errorMessage = ''; statusMessage = ''; refreshOtpCaptcha()"
                         class="text-[11px] text-emerald-500 hover:underline mt-1 cursor-pointer"
                     >
                         {{ __('Change number or email') }}
@@ -350,4 +257,173 @@
             </a>
         </p>
     </div>
+
+    <script>
+        function loginAuthHandler() {
+            return {
+                loginMethod: 'password',
+                otpChannel: '{{ $emailEnabled ? 'email' : 'mobile' }}',
+                identifier: '',
+                otpCode: '',
+                remember: false,
+                step: 'request',
+                loading: false,
+                countdown: 0,
+                timer: null,
+                statusMessage: '',
+                errorMessage: '',
+                plainOtp: '',
+
+                startCountdown(seconds = 60) {
+                    this.countdown = seconds;
+                    if (this.timer) clearInterval(this.timer);
+                    this.timer = setInterval(() => {
+                        if (this.countdown > 0) {
+                            this.countdown--;
+                        } else {
+                            clearInterval(this.timer);
+                        }
+                    }, 1000);
+                },
+
+                refreshOtpCaptcha() {
+                    const container = document.getElementById('otp-captcha-container');
+                    if (! container) return;
+                    const refreshBtn = container.querySelector('.captcha-refresh-btn') || container.querySelector('button[aria-label="Refresh security code"]');
+                    if (refreshBtn) refreshBtn.click();
+                    const ans = container.querySelector('.captcha-answer-input') || container.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                    if (ans) {
+                        ans.value = '';
+                    }
+                },
+
+                async sendOtp() {
+                    if (! this.identifier) {
+                        this.errorMessage = '{{ __('Please enter your registered email or mobile number.') }}';
+                        return;
+                    }
+
+                    const container = document.getElementById('otp-captcha-container');
+                    if (this.step === 'verify') {
+                        this.step = 'request';
+                        this.errorMessage = '{{ __('Please complete security verification to resend code.') }}';
+                        this.refreshOtpCaptcha();
+                        return;
+                    }
+
+                    let captchaToken = '';
+                    let captchaAnswer = '';
+                    let recaptchaResponse = '';
+
+                    if (container) {
+                        const tokenEl = container.querySelector('.captcha-token-input') || container.querySelector('input[name=otp_captcha_token], input[name=captcha_token]');
+                        const answerEl = container.querySelector('.captcha-answer-input') || container.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                        const recaptchaEl = container.querySelector('textarea[name=g-recaptcha-response], input[name=g-recaptcha-response]');
+
+                        if (tokenEl) captchaToken = tokenEl.value;
+                        if (answerEl) captchaAnswer = answerEl.value;
+                        if (recaptchaEl) recaptchaResponse = recaptchaEl.value;
+
+                        if (answerEl && ! captchaAnswer.trim()) {
+                            this.errorMessage = '{{ __('Please enter the security verification code.') }}';
+                            answerEl.focus();
+                            return;
+                        }
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+                    this.statusMessage = '';
+
+                    try {
+                        const payload = {
+                            identifier: this.identifier,
+                            remember: this.remember,
+                        };
+
+                        if (captchaToken) {
+                            payload.captcha_token = captchaToken;
+                            payload.otp_captcha_token = captchaToken;
+                        }
+                        if (captchaAnswer) {
+                            payload.captcha_answer = captchaAnswer;
+                            payload.otp_captcha_answer = captchaAnswer;
+                        }
+                        if (recaptchaResponse) {
+                            payload['g-recaptcha-response'] = recaptchaResponse;
+                        }
+
+                        const response = await fetch('{{ route('login.otp.send') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const data = await response.json();
+
+                        if (! response.ok) {
+                            this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Failed to send OTP.') }}');
+
+                            if (data.errors && data.errors.captcha) {
+                                this.refreshOtpCaptcha();
+                                const ans = container?.querySelector('.captcha-answer-input') || container?.querySelector('input[name=otp_captcha_answer], input[name=captcha_answer]');
+                                if (ans) ans.focus();
+                            }
+                        } else {
+                            this.step = 'verify';
+                            this.statusMessage = data.message;
+                            this.plainOtp = data.plain_code || '';
+                            this.startCountdown(data.cooldown_seconds || 60);
+                        }
+                    } catch (e) {
+                        this.errorMessage = '{{ __('Network error. Please try again.') }}';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async verifyOtp() {
+                    if (! this.otpCode || this.otpCode.length < 4) {
+                        this.errorMessage = '{{ __('Please enter the verification code.') }}';
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+
+                    try {
+                        const response = await fetch('{{ route('login.otp.verify') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            },
+                            body: JSON.stringify({
+                                identifier: this.identifier,
+                                code: this.otpCode,
+                                remember: this.remember
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (! response.ok) {
+                            this.errorMessage = data.message || (data.errors ? Object.values(data.errors)[0][0] : '{{ __('Verification failed.') }}');
+                        } else {
+                            window.location.href = data.redirect_url || '{{ route('home') }}';
+                        }
+                    } catch (e) {
+                        this.errorMessage = '{{ __('Network error. Please try again.') }}';
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            };
+        }
+    </script>
 </x-layouts::auth>

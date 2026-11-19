@@ -5,8 +5,11 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\EmailService;
 use App\Services\OtpService;
+use App\Services\RbacService;
 use App\Services\SmsService;
 use Database\Seeders\MessageTemplateSeeder;
+use Database\Seeders\SuperAdminSeeder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 
 beforeEach(function () {
@@ -24,6 +27,7 @@ beforeEach(function () {
 
     // Ensure templates exist
     (new MessageTemplateSeeder)->run();
+    RbacService::seedDefaults();
 });
 
 test('sms service normalizes phone numbers correctly', function () {
@@ -269,4 +273,109 @@ test('user can reset password using OTP', function () {
 
     $user->refresh();
     expect(Hash::check('NewSecurePassword123!', $user->password))->toBeTrue();
+});
+
+test('user created without a team can log in via OTP and is redirected to their team dashboard with team slug', function () {
+    $user = User::create([
+        'name' => 'Admin Added User',
+        'first_name' => 'Admin',
+        'last_name' => 'Added User',
+        'email' => 'addeduser@example.com',
+        'phone' => '+919876541111',
+        'status' => 'active',
+        'password' => Hash::make('Password@123'),
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+
+    $user->updateQuietly(['current_team_id' => null]);
+    expect($user->current_team_id)->toBeNull();
+
+    $sendResponse = $this->postJson(route('login.otp.send'), [
+        'identifier' => 'addeduser@example.com',
+    ]);
+    $sendResponse->assertOk()->assertJson(['success' => true]);
+
+    $plainCode = $sendResponse->json('plain_code');
+
+    $verifyResponse = $this->postJson(route('login.otp.verify'), [
+        'identifier' => 'addeduser@example.com',
+        'code' => $plainCode,
+    ]);
+
+    $verifyResponse->assertOk()->assertJson(['success' => true]);
+    $redirectUrl = $verifyResponse->json('redirect_url');
+
+    $user->refresh();
+    expect($user->current_team_id)->not->toBeNull();
+    $team = $user->currentTeam;
+    expect($team)->not->toBeNull();
+
+    expect($redirectUrl)->toBe(route('dashboard', ['current_team' => $team->slug]));
+
+    $dashboardResponse = $this->actingAs($user)->get($redirectUrl);
+    $dashboardResponse->assertOk();
+});
+
+test('admin user login via OTP redirects to team slug URL and can access dashboard without 403', function () {
+    $this->seed(SuperAdminSeeder::class);
+
+    $admin = User::where('email', 'admin@sntcssc.in')->first();
+    expect($admin)->not->toBeNull();
+    expect($admin->currentTeam)->not->toBeNull();
+    $teamSlug = $admin->currentTeam->slug;
+    expect($teamSlug)->toBe('sntcssc');
+    expect($admin->currentTeam->name)->toBe('SNT CSSC');
+
+    $sendResponse = $this->postJson(route('login.otp.send'), [
+        'identifier' => 'admin@sntcssc.in',
+    ]);
+    $sendResponse->assertOk()->assertJson(['success' => true]);
+
+    $plainCode = $sendResponse->json('plain_code');
+
+    $verifyResponse = $this->postJson(route('login.otp.verify'), [
+        'identifier' => 'admin@sntcssc.in',
+        'code' => $plainCode,
+    ]);
+
+    $verifyResponse->assertOk()->assertJson(['success' => true]);
+    $redirectUrl = $verifyResponse->json('redirect_url');
+
+    expect($redirectUrl)->toBe(route('dashboard', ['current_team' => $teamSlug]));
+    expect($redirectUrl)->not->toContain('/1/dashboard');
+
+    $dashboardResponse = $this->actingAs($admin)->get($redirectUrl);
+    $dashboardResponse->assertOk();
+
+    $numericIdUrl = url("/{$admin->current_team_id}/dashboard");
+    $numericResponse = $this->actingAs($admin)->get($numericIdUrl);
+    $numericResponse->assertRedirect(route('dashboard', ['current_team' => $teamSlug]));
+
+    $legacyResponse = $this->actingAs($admin)->get(url('/super-admins-team/dashboard'));
+    $legacyResponse->assertRedirect(route('dashboard', ['current_team' => 'sntcssc']));
+});
+
+test('student user without team hitting dashboard redirect does not throw undefined method allTeams', function () {
+    $student = User::create([
+        'name' => 'New Student',
+        'first_name' => 'New',
+        'last_name' => 'Student',
+        'email' => 'newstudent@example.com',
+        'phone' => '+919876542222',
+        'status' => 'active',
+        'password' => Hash::make('Password@123'),
+        'email_verified_at' => now(),
+        'phone_verified_at' => now(),
+    ]);
+    $student->assignRole('Student');
+    $student->updateQuietly(['current_team_id' => null]);
+
+    expect($student->allTeams())->toBeInstanceOf(Collection::class);
+
+    $response = $this->actingAs($student)->get(route('dashboard.redirect'));
+    $student->refresh();
+
+    expect($student->currentTeam)->not->toBeNull();
+    $response->assertRedirect(route('dashboard', ['current_team' => $student->currentTeam->slug]));
 });

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -27,6 +28,39 @@ class FileUploadService
      *
      * @throws \RuntimeException
      */
+    /**
+     * Get default storage disk from database settings with fallback.
+     */
+    public static function defaultDisk(): string
+    {
+        $configured = (string) Setting::get('storage.default_disk', config('filesystems.default', 'public'));
+
+        if ($configured === 's3' && ! Setting::get('storage.s3_bucket') && ! config('filesystems.disks.s3.bucket')) {
+            return 'public';
+        }
+
+        return $configured;
+    }
+
+    /**
+     * Resolve the target disk, respecting active cloud settings.
+     */
+    public static function resolveDisk(?string $disk = null): string
+    {
+        if ($disk === null || $disk === 'default') {
+            return self::defaultDisk();
+        }
+
+        if ($disk === 'public') {
+            $default = self::defaultDisk();
+            if ($default === 's3') {
+                return 's3';
+            }
+        }
+
+        return $disk;
+    }
+
     public static function store(
         UploadedFile|TemporaryUploadedFile $file,
         string $folder = 'settings',
@@ -37,6 +71,7 @@ class FileUploadService
         try {
             $folder = trim($folder, '/');
             $extension = strtolower($file->getClientOriginalExtension() ?: 'bin');
+            $targetDisk = self::resolveDisk($disk);
 
             // Slugify original client filename (without extension) for readability
             $originalName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
@@ -53,7 +88,7 @@ class FileUploadService
                 $extension
             );
 
-            $path = $file->storeAs($folder, $filename, $disk);
+            $path = $file->storeAs($folder, $filename, $targetDisk);
 
             if (! $path) {
                 throw new \RuntimeException("Failed to store file in {$folder}.");
@@ -61,7 +96,7 @@ class FileUploadService
 
             // Remove old file if specified and not the same
             if ($oldPath && $oldPath !== $path) {
-                self::delete($oldPath, $disk);
+                self::delete($oldPath, $targetDisk);
             }
 
             return $path;
@@ -99,12 +134,20 @@ class FileUploadService
             return false;
         }
 
+        $resolvedDisk = self::resolveDisk($disk);
+
         try {
-            if (Storage::disk($disk)->exists($path)) {
-                return Storage::disk($disk)->delete($path);
+            if (Storage::disk($resolvedDisk)->exists($path)) {
+                return Storage::disk($resolvedDisk)->delete($path);
+            }
+
+            // Also check alternate disk if not found (e.g. file was stored on public before switching to S3)
+            $fallbackDisk = $resolvedDisk === 's3' ? 'public' : 's3';
+            if (Storage::disk($fallbackDisk)->exists($path)) {
+                return Storage::disk($fallbackDisk)->delete($path);
             }
         } catch (Throwable $e) {
-            Log::warning("Failed to delete file from {$disk}: {$path}", ['error' => $e->getMessage()]);
+            Log::warning("Failed to delete file from {$resolvedDisk}: {$path}", ['error' => $e->getMessage()]);
         }
 
         return false;
@@ -121,6 +164,16 @@ class FileUploadService
 
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '//')) {
             return $path;
+        }
+
+        $resolvedDisk = self::resolveDisk($disk);
+
+        try {
+            if ($resolvedDisk === 's3' && Storage::disk('s3')->exists($path)) {
+                return Storage::disk('s3')->url($path);
+            }
+        } catch (Throwable) {
+            // Fall back to local public URL
         }
 
         return Storage::disk($disk)->url($path);

@@ -82,7 +82,7 @@ test('User can join meeting room and host can end meeting for all', function () 
 test('User can join meeting via invite link code', function () {
     $host = User::factory()->create(['name' => 'Host Teacher', 'email_verified_at' => now()]);
     $student = User::factory()->create(['name' => 'Student Learner', 'email_verified_at' => now()]);
-    $student->givePermissionTo('chat.access');
+    $student->givePermissionTo(['chat.access', 'meetings.view']);
 
     /** @var MeetingService $meetingService */
     $meetingService = app(MeetingService::class);
@@ -103,7 +103,7 @@ test('User can join meeting via invite link code', function () {
 
 test('Livewire Meetings Hub renders upcoming and allows scheduling', function () {
     $host = User::factory()->create(['name' => 'Faculty Member', 'email_verified_at' => now()]);
-    $host->givePermissionTo('chat.access');
+    $host->givePermissionTo(['chat.access', 'meetings.view', 'meetings.create']);
 
     Livewire::actingAs($host)
         ->test('pages::portal.meetings')
@@ -186,6 +186,7 @@ test('MeetingService sends bulk email invitations to list of custom emails', fun
 
 test('Livewire Meetings Hub creates instant meeting with custom topic and access mode', function () {
     $host = User::factory()->create(['name' => 'Instructor Vikram', 'email_verified_at' => now()]);
+    $host->givePermissionTo(['chat.access', 'meetings.view', 'meetings.create']);
 
     Livewire::actingAs($host)
         ->test('pages::portal.meetings')
@@ -327,4 +328,28 @@ test('Host can cancel meeting with multi-channel cancellation notice', function 
 
     expect($cancelled)->toBeTrue();
     expect($meeting->fresh()->status)->toBe(ChatMeeting::STATUS_CANCELLED);
+});
+
+test('openShareModal renders valid HTML without unparsed Blade directives in attributes', function () {
+    $host = User::factory()->create(['name' => 'Host Lead', 'email_verified_at' => now()]);
+    $host->assignRole('Super Administrator');
+
+    /** @var MeetingService $meetingService */
+    $meetingService = app(MeetingService::class);
+    $meeting = $meetingService->createInstantMeeting(
+        host: $host,
+        title: 'Sharable Test Meeting',
+        mode: ChatMeeting::MODE_VIDEO
+    );
+
+    $test = Livewire::actingAs($host)
+        ->test('pages::portal.meetings')
+        ->call('openShareModal', $meeting->id);
+
+    $html = $test->html();
+
+    expect($html)->toContain('share-meeting-modal');
+    expect($html)->not->toContain('@js(');
+    expect($html)->toContain('copyLink()');
+    expect($html)->toContain('copyInvite()');
 });

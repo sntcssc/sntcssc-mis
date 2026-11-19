@@ -14,6 +14,12 @@ new class extends Component {
 
     public function mount(): void
     {
+        if (! Auth::user()?->isAdmin()) {
+            $this->showPendingInvitationsModal = false;
+
+            return;
+        }
+
         if (session()->pull('team-invitation-accepted')) {
             Toast::dispatch($this, 'success', __('Invitation accepted.'));
         }
@@ -25,6 +31,10 @@ new class extends Component {
     #[Computed]
     public function pendingInvitations(): \Illuminate\Support\Collection
     {
+        if (! Auth::user()?->isAdmin()) {
+            return collect();
+        }
+
         $email = Str::lower(Auth::user()->email);
 
         return TeamInvitation::query()
@@ -45,6 +55,8 @@ new class extends Component {
 
     public function acceptInvitation(string $code): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+
         $invitation = $this->findPendingInvitation($code);
 
         $user = Auth::user();
@@ -69,6 +81,8 @@ new class extends Component {
 
     public function declineInvitation(string $code): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
+
         $invitation = $this->findPendingInvitation($code);
 
         $invitation->delete();
@@ -100,7 +114,7 @@ new class extends Component {
 }; ?>
 
 <div>
-    @if ($this->pendingInvitations->isNotEmpty())
+    @if (auth()->user()?->isAdmin() && $this->pendingInvitations->isNotEmpty())
         <x-ui.modal name="pending-invitations" max-width="max-w-md" :title="__('Pending team invitations')" :description="__('Accept or decline the teams you have been invited to join.')">
             <div data-test="pending-invitations-modal" class="space-y-4">
                 @foreach ($this->pendingInvitations as $invitation)

@@ -18,6 +18,7 @@ new class extends Component {
 
     public function mount(Team $team): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         $this->team = $team;
     }
 
@@ -29,6 +30,7 @@ new class extends Component {
 
     public function deleteTeam(): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         Gate::authorize('delete', $this->team);
 
         $validated = $this->validate([

@@ -35,7 +35,7 @@ class MeetingService
         ?string $description = null,
         array $coHostUserIds = []
     ): ChatMeeting {
-        $enabled = (bool) Setting::get('chat.meetings_enabled', true);
+        $enabled = (bool) Setting::get('meeting.enabled', Setting::get('chat.meetings_enabled', true));
         if (! $enabled && ! $host->hasRole('Super Administrator')) {
             throw ValidationException::withMessages([
                 'meeting' => __('Online meetings are currently disabled by administrator.'),
@@ -122,7 +122,7 @@ class MeetingService
         array $customEmails = [],
         array $dispatchChannels = ['database', 'email']
     ): ChatMeeting {
-        $enabled = (bool) Setting::get('chat.meetings_enabled', true);
+        $enabled = (bool) Setting::get('meeting.enabled', Setting::get('chat.meetings_enabled', true));
         if (! $enabled && ! $host->hasRole('Super Administrator')) {
             throw ValidationException::withMessages([
                 'meeting' => __('Online meetings are currently disabled by administrator.'),
@@ -608,7 +608,8 @@ class MeetingService
 
             // Determine if user requires waiting room admission
             $isInvited = $existing && in_array($existing->status, [ChatMeetingParticipant::STATUS_INVITED, ChatMeetingParticipant::STATUS_JOINED]);
-            $requiresWaiting = ! $isHostOrCoHost && ! $meeting->isOpenForEveryone() && ! $isInvited;
+            $waitingRoomEnabled = (bool) ($meeting->settings['waiting_room_enabled'] ?? false);
+            $requiresWaiting = ! $isHostOrCoHost && ($waitingRoomEnabled || ! $meeting->isOpenForEveryone()) && ! $isInvited;
 
             $initialStatus = $requiresWaiting ? ChatMeetingParticipant::STATUS_WAITING : ChatMeetingParticipant::STATUS_JOINED;
 

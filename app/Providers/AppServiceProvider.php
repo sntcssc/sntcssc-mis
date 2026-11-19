@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Pusher\Pusher;
@@ -31,12 +32,24 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureVite();
         $this->registerBladeDirectives();
         $this->registerBroadcasters();
 
         Gate::before(function ($user, $ability) {
-
             if ($user->hasRole('Super Administrator')) {
+                return true;
+            }
+
+            if ($ability === 'academic_calendar.view' && method_exists($user, 'canAny') && $user->canAny([
+                'academic_calendar.create',
+                'academic_calendar.edit',
+                'academic_calendar.revise',
+                'academic_calendar.delete',
+                'academic_calendar.export',
+                'academic_calendar.import',
+                'academic_calendar.download',
+            ])) {
                 return true;
             }
         });
@@ -121,5 +134,19 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Configure Vite asset and preload tag behaviors.
+     */
+    protected function configureVite(): void
+    {
+        Vite::usePreloadTagAttributes(function (string $src, string $url, ?array $chunk, ?array $manifest): array|false {
+            if (preg_match('/\.(css|less|sass|scss|styl|stylus|pcss|postcss)(\?[^\.]*)?$/', $url) === 1) {
+                return false;
+            }
+
+            return [];
+        });
     }
 }

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta charset="UTF-8">
+    <title>{{ $title ?? 'Hostel Accommodations Register' }}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 10mm 8mm 12mm 8mm;
+        }
+        body {
+            font-family: DejaVu Sans, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 8px;
+            color: #1e293b;
+            line-height: 1.25;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            border-bottom: 2px solid #4f46e5;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+        .header table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .institute-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #312e81;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .sub-title {
+            font-size: 9px;
+            color: #475569;
+            margin: 2px 0 0 0;
+        }
+        .report-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #0f172a;
+            margin-top: 5px;
+        }
+        .meta-box {
+            text-align: right;
+            font-size: 8px;
+            color: #64748b;
+        }
+        .meta-box strong {
+            color: #1e293b;
+        }
+        .stats-summary {
+            width: 100%;
+            margin-bottom: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 4px 8px;
+        }
+        .stats-summary table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .stat-item {
+            font-size: 8px;
+            color: #475569;
+        }
+        .stat-value {
+            font-weight: bold;
+            color: #0f172a;
+            font-size: 9px;
+        }
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        table.data-table th {
+            background-color: #f1f5f9;
+            color: #1e293b;
+            font-weight: bold;
+            text-align: left;
+            padding: 5px 4px;
+            border: 1px solid #cbd5e1;
+            font-size: 7.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        table.data-table td {
+            padding: 4px 4px;
+            border: 1px solid #e2e8f0;
+            font-size: 7.5px;
+            vertical-align: top;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        table.data-table tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+        .badge {
+            display: inline-block;
+            padding: 1.5px 4px;
+            border-radius: 2px;
+            font-size: 6.5px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .badge-active { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .badge-extended { background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .badge-vacated { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .badge-yes { background-color: #dbeafe; color: #1e40af; }
+        .badge-no { background-color: #fee2e2; color: #991b1b; }
+        .badge-student { background-color: #e0e7ff; color: #3730a3; }
+        .badge-staff { background-color: #fef3c7; color: #92400e; }
+        .text-bold { font-weight: bold; }
+        .text-muted { color: #64748b; }
+        .text-center { text-align: center; }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 4px;
+            font-size: 7px;
+            color: #94a3b8;
+            text-align: center;
+        }
+        .page-number:after {
+            content: counter(page);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <table>
+            <tr>
+                <td style="width: 65%;">
+                    <h1 class="institute-title">Satyendranath Tagore Civil Services Study Centre</h1>
+                    <div class="sub-title">Govt. of West Bengal &middot; Administrative Training Institute (ATI) Campus, Block FC, Sector III, Salt Lake, Kolkata 700106</div>
+                    <div class="report-title">{{ $title ?? 'Hostel Room Allocations & Residents Register' }}</div>
+                </td>
+                <td style="width: 35%;" class="meta-box">
+                    <div><strong>Generated On:</strong> {{ now()->format('d M Y, h:i A') }}</div>
+                    <div><strong>Generated By:</strong> {{ auth()->user()?->name ?? 'System Administrator' }}</div>
+                    <div><strong>Total Records Exported:</strong> {{ count($allocations) }}</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Summary Metrics Bar -->
+    <div class="stats-summary">
+        <table>
+            <tr>
+                <td class="stat-item">Total Allotments: <span class="stat-value">{{ count($allocations) }}</span></td>
+                <td class="stat-item">Active Residents: <span class="stat-value">{{ $allocations->where('status', 'active')->count() }}</span></td>
+                <td class="stat-item">Stay Extended: <span class="stat-value">{{ $allocations->where('status', 'extended')->count() }}</span></td>
+                <td class="stat-item">Vacated / Past: <span class="stat-value">{{ $allocations->where('status', 'vacated')->count() }}</span></td>
+                <td class="stat-item">Hard Copy Submitted: <span class="stat-value">{{ $allocations->where('hard_copy_submitted', true)->count() }}</span></td>
+                <td class="stat-item">Soft Copy Verified: <span class="stat-value">{{ $allocations->filter(fn($a) => !empty($a->soft_copy_path))->count() }}</span></td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width: 20px;" class="text-center">#</th>
+                <th style="width: 65px;">Allotment Ref</th>
+                <th style="width: 120px;">Resident Name & Contact</th>
+                <th style="width: 80px;">Student ID / Enrolment</th>
+                <th style="width: 125px;">Course / Batch / Section</th>
+                <th style="width: 110px;">Allotted Room & Bed</th>
+                <th style="width: 85px;">Stay Timeline</th>
+                <th style="width: 55px;" class="text-center">Forms</th>
+                <th style="width: 55px;" class="text-center">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($allocations as $index => $a)
+                @php
+                    $user = $a->user;
+                    $room = $a->room;
+                    $bed = $a->bed;
+                    $building = $room?->building;
+                    $floor = $room?->floor;
+                @endphp
+                <tr>
+                    <td class="text-center text-bold">{{ $index + 1 }}</td>
+                    <td>
+                        <div class="text-bold">{{ $a->allocation_no }}</div>
+                        <div class="text-muted" style="font-size: 6.5px;">{{ $a->created_at ? $a->created_at->format('d/m/Y') : '-' }}</div>
+                        @if($a->is_previous_batch_student)
+                            <div style="font-size: 6px; color: #b45309; font-weight: bold;">[Past Batch]</div>
+                        @endif
+                    </td>
+                    <td>
+                        <div class="text-bold">{{ $user?->name ?? 'N/A' }}</div>
+                        <div class="text-muted">{{ $user?->email ?? '-' }}</div>
+                        <div class="text-muted">{{ $user?->phone ?? '-' }}</div>
+                        <span class="badge {{ $a->resident_type === 'student' ? 'badge-student' : 'badge-staff' }}">
+                            {{ ucfirst($a->resident_type ?? 'student') }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="text-bold">{{ $a->student_identifier }}</div>
+                        <div class="text-muted">{{ $a->enrollment_no }}</div>
+                    </td>
+                    <td>
+                        <div class="text-bold" style="color: #1e40af;">{{ $a->course_name }}</div>
+                        <div class="text-muted">{{ $a->batch_name }}</div>
+                        @if($a->section_name && $a->section_name !== 'N/A')
+                            <div class="text-muted" style="font-size: 6.5px;">Sec: {{ $a->section_name }}</div>
+                        @endif
+                    </td>
+                    <td>
+                        <div class="text-bold">{{ $building?->name ?? 'N/A' }}</div>
+                        <div class="text-muted">{{ $floor?->name ?? '-' }} &middot; Rm {{ $room?->room_number ?? 'N/A' }}</div>
+                        <div class="text-bold" style="color: #4f46e5;">Bed: {{ $bed?->bed_number ?? 'N/A' }}</div>
+                        <div class="text-muted" style="font-size: 6.5px;">{{ $room?->gender_label ?? '' }}</div>
+                    </td>
+                    <td>
+                        <div><strong>From:</strong> {{ $a->start_date ? $a->start_date->format('d/m/Y') : '-' }}</div>
+                        <div><strong>To:</strong> {{ $a->end_date ? $a->end_date->format('d/m/Y') : 'Indefinite' }}</div>
+                        <div class="text-muted" style="font-size: 6.5px;">{{ $a->duration_formatted }}</div>
+                    </td>
+                    <td class="text-center">
+                        <div>
+                            Hard:
+                            <span class="badge {{ $a->hard_copy_submitted ? 'badge-yes' : 'badge-no' }}">
+                                {{ $a->hard_copy_submitted ? 'Yes' : 'No' }}
+                            </span>
+                        </div>
+                        <div style="margin-top: 2px;">
+                            Soft:
+                            <span class="badge {{ !empty($a->soft_copy_path) ? 'badge-yes' : 'badge-no' }}">
+                                {{ !empty($a->soft_copy_path) ? 'Yes' : 'No' }}
+                            </span>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        @if($a->status === 'active')
+                            <span class="badge badge-active">Active</span>
+                        @elseif($a->status === 'extended')
+                            <span class="badge badge-extended">Extended</span>
+                        @else
+                            <span class="badge badge-vacated">{{ ucfirst($a->status) }}</span>
+                        @endif
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 15px; color: #64748b;">
+                        {{ __('No hostel accommodation records found matching the criteria.') }}
+                    </td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Confidential Document &middot; Satyendranath Tagore Civil Services Study Centre &middot; MIS Hostel Accommodations Register
+    </div>
+</body>
+</html>

@@ -21,6 +21,7 @@ new class extends Component {
         ?string $modalName = null,
     ): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         $this->team = $team;
         $this->invitationCode = $invitationCode ?? '';
         $this->invitationEmail = $invitationEmail ?? '';
@@ -29,6 +30,7 @@ new class extends Component {
 
     public function cancelInvitation(): void
     {
+        abort_unless(Auth::user()?->isAdmin(), 403, __('Team functionality is strictly restricted to administrators.'));
         $invitation = $this->team->invitations()->where('code', $this->invitationCode)->firstOrFail();
 
         if ($this->invitationEmail === '') {

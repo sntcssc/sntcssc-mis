@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\TeamRole;
 use App\Exports\TableExport;
 use App\Models\Role;
+use App\Models\Team;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -16,7 +18,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -124,7 +125,7 @@ class UserExportImportService
     /**
      * Export users query to printable PDF.
      */
-    public static function exportPdf(Builder $query, string $title = 'System Users Directory'): Response
+    public static function exportPdf(Builder $query, string $title = 'System Users Directory'): StreamedResponse
     {
         $users = $query->with('roles')->latest('id')->limit(500)->get();
         $filename = Str::slug($title).'-'.now()->format('Ymd-His').'.pdf';
@@ -138,7 +139,16 @@ class UserExportImportService
 
         $pdf->setPaper('A4', 'landscape');
 
-        return $pdf->download($filename);
+        return response()->streamDownload(
+            function () use ($pdf) {
+                echo $pdf->output();
+            },
+            $filename,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            ]
+        );
     }
 
     /**
@@ -288,13 +298,40 @@ class UserExportImportService
                     'password' => Hash::make($row['password'] ?? Str::random(12)),
                 ]);
 
-                // Assign role
-                $roleName = trim((string) ($row['role'] ?? 'Staff'));
-                if ($roleName && Role::where('name', $roleName)->exists()) {
-                    $user->assignRole($roleName);
+                $targetTeam = auth()->user()?->currentTeam
+                    ?? auth()->user()?->personalTeam()
+                    ?? Team::where('slug', 'sntcssc')->first()
+                    ?? Team::where('slug', 'super-admins-team')->first()
+                    ?? Team::first();
+
+                if ($targetTeam) {
+                    $user->assignToTeam($targetTeam, TeamRole::Member);
                 } else {
-                    $user->assignRole('Staff');
+                    $user->ensureCurrentTeam();
                 }
+
+                // Assign role
+                $roleName = trim((string) ($row['role'] ?? ''));
+                if (empty($roleName)) {
+                    $skipped++;
+                    $errors[] = "Row #{$rowNum} ({$email}): Role is required in the import file.";
+
+                    continue;
+                }
+
+                $matchedRole = Role::where('name', $roleName)
+                    ->orWhere('name', ucwords(strtolower($roleName)))
+                    ->first();
+
+                if (! $matchedRole) {
+                    $skipped++;
+                    $errors[] = "Row #{$rowNum} ({$email}): Role '{$roleName}' does not exist in the system.";
+
+                    continue;
+                }
+
+                $user->assignRole($matchedRole->name);
+                UserStudentSyncService::syncFromUser($user);
 
                 $imported++;
             }
